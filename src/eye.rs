@@ -27,8 +27,9 @@ impl Camera for OrbitCamera {
 		let eye = Vec3::new(
 			self.position.x.cos() * self.position.y.cos(),
 			self.position.x.sin() * self.position.y.cos(),
-			self.position.y.sin()) * self.position.z;
-		let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Y);
+			self.position.y.sin(),
+		) * self.position.z;
+		let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
 		let proj = Mat4::perspective_lh(self.fov, self.aspect, 0.25, 512.);
 		proj * view
 	}

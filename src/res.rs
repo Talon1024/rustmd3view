@@ -80,8 +80,8 @@ impl AppResources {
 			None => pwd.as_ref(),
 		};
 		let null_texture = Texture::read_png(path.join("null.png"))?;
-		let md3_vertex_shader = fs::read_to_string(path.join("shader.vert"))?;
-		let md3_pixel_shader = fs::read_to_string(path.join("shader.frag"))?;
+		let md3_vertex_shader = fs::read_to_string(path.join("md3.vert"))?;
+		let md3_pixel_shader = fs::read_to_string(path.join("md3.frag"))?;
 		Ok(Box::new(AppResources {
 			null_texture,
 			null_texunit: TextureUnit(1),

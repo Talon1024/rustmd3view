@@ -6,7 +6,7 @@ uniform float frame; // interpolated
 layout(location=0) in uint aIndex;
 layout(location=1) in vec2 aUv;
 out vec3 position;
-out vec3 normal;
+out vec3 eyeNormal;
 out vec2 uv;
 
 const float MD3_XYZ_SCALE = 0.015625; //1./64
@@ -42,7 +42,7 @@ void main() {
 	ivec4 ib = texelFetch(anim, uvb, 0);
 	vec3[2] vb = toPosNorm(ib);
 	position = mix(va[0], vb[0], interp);
-	normal = mix(va[1], vb[1], interp);
+	eyeNormal = (eye * vec4(mix(va[1], vb[1], interp), 1.)).xyz;
 	uv = aUv;
 	gl_Position = eye * vec4(position, 1.);
 }

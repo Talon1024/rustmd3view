@@ -1,0 +1,19 @@
+[package]
+name = "rustmd3view"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = "1.12.1"
+glutin = "0.29.1"
+glow = "0.11.2"
+glam = {version = "0.21.3", features=["bytemuck"]}
+thiserror = "1.0.37"
+anyhow = {version = "1.0.66", features=["backtrace"]}
+egui = "0.19.0"
+egui_file = "0.2.0"
+egui_glow = {version = "0.19.0", features=["winit"]}
+png = "0.17.6"
+shrinkwraprs = "0.3.0"

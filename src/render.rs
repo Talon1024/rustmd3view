@@ -154,7 +154,6 @@ impl<T> Drop for IndexBuffer<T> where T: IndexInteger + Pod {
 pub struct Texture {
 	glc: Arc<Context>,
 	tex: <Context as HasContext>::Texture,
-	unit: TextureUnit,
 }
 
 impl Drop for Texture {
@@ -167,10 +166,10 @@ impl Drop for Texture {
 }
 
 impl Texture {
-	pub fn try_from_texture(glc: Arc<Context>, tex: &RTexture, unit: TextureUnit) -> Result<Self, Box<dyn Error>> {
+	pub fn try_from_texture(glc: Arc<Context>, tex: &RTexture) -> Result<Self, Box<dyn Error>> {
 		unsafe {
+			glc.active_texture(0);
 			let texture = glc.create_texture()?;
-			glc.active_texture(unit.gl_id());
 			glc.bind_texture(glow::TEXTURE_2D, Some(texture));
 			let tex_iformat = match tex.texture_type {
 				TextureType::I32RGBA => glow::RGBA32I,
@@ -203,7 +202,6 @@ impl Texture {
 			Ok(Texture{
 				tex: texture,
 				glc,
-				unit,
 			})
 		}
 	}
@@ -353,7 +351,7 @@ impl TextureUnit {
 			_ => 0,
 		}
 	}
-	pub fn gl_u(self) -> u32 {
+	pub fn gl_uniform(self) -> i32 {
 		match self.0 {
 			x if x >= 1 && x <= 32 => x - 1,
 			_ => 0,
@@ -361,15 +359,12 @@ impl TextureUnit {
 	}
 }
 
-pub fn render<V, I, F>(
+pub fn render<V, I>(
 	vertices: &VertexBuffer<V>,
-	indices: &IndexBuffer<I>,
-	mut setup: F) -> Result<(), Box<dyn Error>>
+	indices: &IndexBuffer<I>) -> Result<(), Box<dyn Error>>
 where
 	V : InterleavedVertexAttribute + Pod,
-	I : IndexInteger + Pod,
-	F : FnMut() {
-	setup();
+	I : IndexInteger + Pod {
 	unsafe {
 		vertices.glc.bind_vertex_array(vertices.vao);
 		indices.glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, indices.ebo);

@@ -7,7 +7,7 @@ mod render;
 use eye::{Camera, OrbitCamera};
 use glow::{Context as GLContext, HasContext};
 use glutin::event_loop::{EventLoopBuilder, ControlFlow};
-use glutin::event::{Event, WindowEvent};
+use glutin::event::Event;
 use res::AppResources;
 use std::{
 	collections::HashMap,
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
 	let mut app = App::new();
 	let app_res = AppResources::try_load(None)?;
-	app.model_tx = Some(Texture::try_from_texture(Arc::clone(&glc), &app_res.null_texture, app_res.null_texunit)?);
+	app.model_tx = Some(Texture::try_from_texture(Arc::clone(&glc), &app_res.null_texture)?);
 	app.model_sd = Some({
 		let mut sdr = ShaderProgram::new(Arc::clone(&glc))?;
 		sdr.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)?;
@@ -82,23 +82,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 		});
 		sdr
 	});
-	let first_texunit = {
-		let mut u = app_res.null_texunit.clone();
-		*u += 1;
-		u
+	app.camera.aspect = {
+		let logical_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
+		logical_size.width / logical_size.height
 	};
 	let _app_start = Instant::now();
 	unsafe { glc.clear_color(0., 0., 0., 1.); }
 	el.run(move |event, _window, control_flow| {
 		match event {
 			Event::WindowEvent { window_id: _, event } => {
+				use glutin::event::WindowEvent::*;
 				if egui_glow.on_event(&event) {
 					return ();
 				}
 				match event {
-					WindowEvent::CloseRequested => {
+					CloseRequested => {
 						*control_flow = ControlFlow::ExitWithCode(0);
 					},
+					Resized(new_size) => {
+						let logical_size = new_size.to_logical::<f32>(wc.window().scale_factor());
+						app.camera.aspect = logical_size.width / logical_size.height;
+					}
 					_ => (),
 				}
 			},
@@ -108,27 +112,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 				unsafe {
 					glc.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
 					glc.enable(glow::DEPTH_TEST);
-					if app.model.is_some() && app.model_vb.is_some() && app.model_ib.is_some() {
+					if app.model.is_some() {
+						app.model_sd.as_ref().unwrap().activate().unwrap();
+
+						let mut texture = app_res.null_texunit;
+
+						glc.active_texture(texture.gl_id());
+						glc.bind_texture(glow::TEXTURE_2D, Some(app.model_tx.as_ref().unwrap().tex()));
+						glc.uniform_1_i32(Some(app.uniform_locations.get("tex").unwrap()), texture.gl_uniform());
+
+						*texture += 1;
+
+						glc.active_texture(texture.gl_id());
+						glc.bind_texture(glow::TEXTURE_2D, Some(app.model_an.as_ref().unwrap().tex()));
+						glc.uniform_1_i32(Some(app.uniform_locations.get("anim").unwrap()), texture.gl_uniform());
+
+						glc.uniform_1_f32(app.uniform_locations.get("frame"), app.current_frame);
+
+						glc.uniform_matrix_4_f32_slice(app.uniform_locations.get("eye"), false, app.camera.view_projection().as_ref());
+
 						if let Err(e) = render::render(
 							app.model_vb.as_ref().unwrap(),
-							app.model_ib.as_ref().unwrap(), || {
-
-								app.model_sd.as_ref().unwrap().activate().unwrap();
-
-								glc.active_texture(app_res.null_texunit.gl_id());
-								glc.bind_texture(glow::TEXTURE_2D, Some(app.model_tx.as_ref().unwrap().tex()));
-								glc.uniform_1_u32(Some(app.uniform_locations.get("tex").unwrap()), app_res.null_texunit.gl_u());
-
-								let texture = first_texunit;
-
-								glc.active_texture(texture.gl_id());
-								glc.bind_texture(glow::TEXTURE_2D, Some(app.model_an.as_ref().unwrap().tex()));
-								glc.uniform_1_u32(Some(app.uniform_locations.get("anim").unwrap()), texture.gl_u());
-
-								glc.uniform_1_f32(app.uniform_locations.get("frame"), app.current_frame);
-
-								glc.uniform_matrix_4_f32_slice(app.uniform_locations.get("eye"), false, app.camera.view_projection().as_ref());
-							}) {
+							app.model_ib.as_ref().unwrap()) {
 							eprintln!("{:?}", e);
 						}
 					}
@@ -196,7 +201,7 @@ if app.open_file_dialog.selected() {
 				app.model_vb.as_mut().unwrap().upload().unwrap();
 				app.model_ib = Some(IndexBuffer::<u32>::from_surface(Arc::clone(&glc), surf));
 				app.model_ib.as_mut().unwrap().upload().unwrap();
-				app.model_an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture(), first_texunit).ok();
+				app.model_an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).ok();
 				app.camera.position.z = -app.model.as_ref().unwrap().max_radius() * 2.;
 			}
 			Ok(())

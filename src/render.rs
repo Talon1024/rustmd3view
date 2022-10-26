@@ -201,8 +201,8 @@ impl Texture {
 			glc.bind_texture(glow::TEXTURE_2D, Some(texture));
 			let tex_iformat: i32 = match tex.texture_type {
 				TextureType::I32RGBA => glow::RGBA32I,
-				TextureType::U8RGBA => glow::RGBA,
-				TextureType::U8RGB => glow::RGB,
+				TextureType::U8RGBA => glow::RGBA32F,
+				TextureType::U8RGB => glow::RGB32F,
 			}.try_into().unwrap();
 			let tex_format = match tex.texture_type {
 				TextureType::I32RGBA => glow::RGBA_INTEGER,

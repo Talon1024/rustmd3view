@@ -8,6 +8,8 @@ out vec4 FragColor;
 
 void main() {
 	vec3 up = vec3(0., 1., 0.);
-	FragColor = vec4(eyeNormal, 1.);
+	float brightness = max(0., -eyeNormal.z);
+	FragColor = vec4(vec3(brightness), 1.);
+	// FragColor = vec4(eyeNormal, 1.);
 	// FragColor = texture(tex, uv);
 }

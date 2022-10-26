@@ -42,7 +42,8 @@ void main() {
 	ivec4 ib = texelFetch(anim, uvb, 0);
 	vec3[2] vb = toPosNorm(ib);
 	position = mix(va[0], vb[0], interp);
-	eyeNormal = (eye * vec4(mix(va[1], vb[1], interp), 1.)).xyz;
+	// Thanks to https://en.wikibooks.org/wiki/GLSL_Programming/Applying_Matrix_Transformations#Transforming_Directions for "pointing me in the right direction" 😉😉
+	eyeNormal = (eye * vec4(mix(va[1], vb[1], interp), 0.)).xyz;
 	uv = aUv;
 	gl_Position = eye * vec4(position, 1.);
 }

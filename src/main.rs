@@ -71,6 +71,58 @@ impl App {
 }
 
 const MOUSE_FACTOR: f32 = 0.0078125; // 1./128
+const LOOK_LIMIT: f32 = {
+	use std::mem;
+	let v = unsafe{mem::transmute::<f32, u32>(FRAC_PI_2)};
+	// It's a pain in the butt having to generate this code... But it's all
+	// done at compile time, so there are no runtime costs.
+	/* 
+	Shell (zsh) code used to generate this mess:
+	(bits=32
+	for bit in {0..$((bits-1))}; do
+		print -v hxb -f "%0$((bits/4))X" $((1 << bit))
+		if ((bit > 0)); then
+			print -n "else "
+		fi
+		print "if v & $hxb != 0 { $hxb }"
+	done
+	print "else { 0 };")
+	 */
+	let lowest_bit = if v & 00000001 != 0 { 00000001 }
+	else if v & 00000002 != 0 { 00000002 }
+	else if v & 00000004 != 0 { 00000004 }
+	else if v & 00000008 != 0 { 00000008 }
+	else if v & 00000010 != 0 { 00000010 }
+	else if v & 00000020 != 0 { 00000020 }
+	else if v & 00000040 != 0 { 00000040 }
+	else if v & 00000080 != 0 { 00000080 }
+	else if v & 00000100 != 0 { 00000100 }
+	else if v & 00000200 != 0 { 00000200 }
+	else if v & 00000400 != 0 { 00000400 }
+	else if v & 00000800 != 0 { 00000800 }
+	else if v & 00001000 != 0 { 00001000 }
+	else if v & 00002000 != 0 { 00002000 }
+	else if v & 00004000 != 0 { 00004000 }
+	else if v & 00008000 != 0 { 00008000 }
+	else if v & 00010000 != 0 { 00010000 }
+	else if v & 00020000 != 0 { 00020000 }
+	else if v & 00040000 != 0 { 00040000 }
+	else if v & 00080000 != 0 { 00080000 }
+	else if v & 00100000 != 0 { 00100000 }
+	else if v & 00200000 != 0 { 00200000 }
+	else if v & 00400000 != 0 { 00400000 }
+	else if v & 00800000 != 0 { 00800000 }
+	else if v & 01000000 != 0 { 01000000 }
+	else if v & 02000000 != 0 { 02000000 }
+	else if v & 04000000 != 0 { 04000000 }
+	else if v & 08000000 != 0 { 08000000 }
+	else if v & 10000000 != 0 { 10000000 }
+	else if v & 20000000 != 0 { 20000000 }
+	else if v & 40000000 != 0 { 40000000 }
+	else if v & 80000000 != 0 { 80000000 }
+	else { 0 };
+	unsafe{mem::transmute::<u32, f32>(v ^ lowest_bit)}
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
 	let el = EventLoopBuilder::new().build();
@@ -140,8 +192,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 						let dx = dx as f32 * MOUSE_FACTOR;
 						let dy = dy as f32 * MOUSE_FACTOR;
 						app.camera.position.x += dx;
-						app.camera.position.y += dy;
-						app.camera.position.y = app.camera.position.y.clamp(-FRAC_PI_2, FRAC_PI_2);
+						app.camera.position.y -= dy;
+						app.camera.position.y = app.camera.position.y.clamp(-LOOK_LIMIT, LOOK_LIMIT);
 					},
 					_ => ()
 				}

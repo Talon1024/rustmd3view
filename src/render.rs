@@ -79,12 +79,7 @@ impl VertexBuffer<Vertex> {
 		let buf = surf.texcoords.iter().enumerate()
 			.map(|(index, uv)| Vertex {index: index as u32, uv: uv.0})
 			.collect();
-		VertexBuffer {
-			buf,
-			glc,
-			vao: None,
-			vbo: None,
-		}
+		VertexBuffer::new(glc, buf)
 	}
 }
 
@@ -139,11 +134,7 @@ impl<T> IndexBuffer<T> where T: IndexInteger + Pod {
 impl IndexBuffer<u32> {
 	pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
 		let buf = surf.triangles.iter().flat_map(|t| t.0).collect();
-		IndexBuffer {
-			buf,
-			glc,
-			ebo: None,
-		}
+		IndexBuffer::new(glc, buf)
 	}
 }
 

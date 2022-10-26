@@ -1,15 +1,16 @@
 use std::error::Error;
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use crate::md3::MD3Surface;
 use crate::res::{Texture as RTexture, TextureType};
 use glow::{Context, HasContext};
-use std::{mem, sync::Arc};
+use std::{mem, sync::Arc, marker::PhantomData};
 use shrinkwraprs::Shrinkwrap;
 use bytemuck::{Pod, Zeroable};
+use crate::eutil::gl_get_error;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
-pub struct Vertex {
+pub struct VertexMD3 {
 	index: u32,
 	uv: Vec2,
 }
@@ -18,7 +19,7 @@ pub trait InterleavedVertexAttribute {
 	unsafe fn setup_vertex_attrs(glc: &Context);
 }
 
-impl InterleavedVertexAttribute for Vertex {
+impl InterleavedVertexAttribute for VertexMD3 {
 	unsafe fn setup_vertex_attrs(glc: &Context) {
 		let mut attrib_index = 0;
 
@@ -34,63 +35,94 @@ impl InterleavedVertexAttribute for Vertex {
 	}
 }
 
-#[derive(Shrinkwrap, Debug)]
-pub struct VertexBuffer<T> where T: InterleavedVertexAttribute + Pod {
-	#[shrinkwrap(main_field)] buf: Vec<T>,
-	glc: Arc<Context>,
-	vao: Option<<Context as HasContext>::VertexArray>,
-	vbo: Option<<Context as HasContext>::Buffer>,
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
+pub struct VertexRes {
+	pub position: Vec3,
+	pub colour: Vec3,
 }
 
-impl<T> VertexBuffer<T> where T: InterleavedVertexAttribute + Pod {
-	pub fn upload(&mut self) -> Result<(), Box<dyn Error>> {
-		let glc = &self.glc;
-		unsafe {
-			self.vao = Some(glc.create_vertex_array()?);
-			glc.bind_vertex_array(self.vao);
-			self.vbo = match glc.create_buffer() {
-				Ok(b) => Some(b),
-				Err(e) => {
-					glc.delete_vertex_array(self.vao.unwrap());
-					self.vao = None;
-					return Err(Box::from(e));
-				},
-			};
-			glc.bind_buffer(glow::ARRAY_BUFFER, self.vbo);
-			glc.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytemuck::cast_slice::<T, u8>(&self.buf), glow::STATIC_DRAW);
+impl InterleavedVertexAttribute for VertexRes {
+	unsafe fn setup_vertex_attrs(glc: &Context) {
+		let mut attrib_index = 0;
+
+		glc.vertex_attrib_pointer_f32(attrib_index, 3, glow::FLOAT, false, mem::size_of::<Self>() as i32, 0);
+		glc.enable_vertex_attrib_array(attrib_index);
+		attrib_index += 1;
+
+		glc.vertex_attrib_pointer_f32(attrib_index, 3, glow::FLOAT, false, mem::size_of::<Self>() as i32, mem::size_of::<Vec3>() as i32);
+		glc.enable_vertex_attrib_array(attrib_index);
+		// attrib_index += 1;
+	}
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
+pub struct VertexSprite {
+	pub position: Vec2,
+	pub size: Vec2,
+}
+
+impl InterleavedVertexAttribute for VertexSprite {
+	unsafe fn setup_vertex_attrs(glc: &Context) {
+		let mut attrib_index = 0;
+
+		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false, mem::size_of::<Self>() as i32, 0);
+		glc.enable_vertex_attrib_array(attrib_index);
+		attrib_index += 1;
+
+		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false, mem::size_of::<Self>() as i32, mem::size_of::<Vec2>() as i32);
+		glc.enable_vertex_attrib_array(attrib_index);
+		// attrib_index += 1;
+	}
+}
+
+#[derive(Debug)]
+pub struct VertexBuffer {
+	glc: Arc<Context>,
+	vao: <Context as HasContext>::VertexArray,
+	vbo: <Context as HasContext>::Buffer,
+	// size: i32,
+}
+
+impl VertexBuffer {
+	pub fn new<T>(glc: Arc<Context>, buf: Vec<T>) -> Self
+	where T: InterleavedVertexAttribute + Pod {
+		let (vao, vbo) = unsafe {
+			let glc = &glc;
+			let vao = glc.create_vertex_array().unwrap();
+			glc.bind_vertex_array(Some(vao));
+			let vbo = glc.create_buffer().unwrap();
+			glc.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+			glc.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytemuck::cast_slice::<T, u8>(&buf), glow::STATIC_DRAW);
 			T::setup_vertex_attrs(glc);
 			glc.bind_buffer(glow::ARRAY_BUFFER, None);
 			glc.bind_vertex_array(None);
-		}
-		Ok(())
-	}
-	pub fn new(glc: Arc<Context>, buf: Vec<T>) -> Self {
+			(vao, vbo)
+		};
+		// let size = buf.len() as i32;
 		Self {
-			buf,
 			glc,
-			vao: None,
-			vbo: None,
+			vao,
+			vbo,
+			// size,
 		}
 	}
-}
-
-impl VertexBuffer<Vertex> {
 	pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
 		let buf = surf.texcoords.iter().enumerate()
-			.map(|(index, uv)| Vertex {index: index as u32, uv: uv.0})
+			.map(|(index, uv)| VertexMD3 {index: index as u32, uv: uv.0})
 			.collect();
 		VertexBuffer::new(glc, buf)
 	}
 }
 
-impl<T> Drop for VertexBuffer<T> where T: InterleavedVertexAttribute + Pod {
+impl Drop for VertexBuffer {
 	fn drop(&mut self) {
+		// println!("Drop VertexBuffer");
 		let glc = &self.glc;
-		if let Some(vao) = self.vao {
-			unsafe { glc.delete_vertex_array(vao); }
-		}
-		if let Some(vbo) = self.vbo {
-			unsafe { glc.delete_buffer(vbo); }
+		unsafe {
+			glc.delete_vertex_array(self.vao);
+			glc.delete_buffer(self.vbo);
 		}
 	}
 }
@@ -104,29 +136,29 @@ impl IndexInteger for u32 { const GL_TYPE: u32 = glow::UNSIGNED_INT; }
 // impl IndexInteger for usize { const GL_TYPE: u32 = glow::UNSIGNED_PTR; }
 
 
-#[derive(Shrinkwrap, Debug)]
-pub struct IndexBuffer<T> where T: IndexInteger + Pod {
-	#[shrinkwrap(main_field)] buf: Vec<T>,
+#[derive(Debug)]
+pub struct IndexBuffer<I> where I : IndexInteger + Pod {
 	glc: Arc<Context>,
-	ebo: Option<<Context as HasContext>::Buffer>,
+	ebo: <Context as HasContext>::Buffer,
+	size: i32,
+	_type: PhantomData<I>
 }
 
-impl<T> IndexBuffer<T> where T: IndexInteger + Pod {
-	pub fn upload(&mut self) -> Result<(), Box<dyn Error>> {
-		let glc = &self.glc;
-		unsafe {
-			self.ebo = Some(glc.create_buffer()?);
-			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, self.ebo);
-			glc.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytemuck::cast_slice::<T, u8>(&self.buf), glow::STATIC_DRAW);
+impl<I> IndexBuffer<I> where I : IndexInteger + Pod {
+	pub fn new(glc: Arc<Context>, buf: Vec<I>) -> Self {
+		let ebo = unsafe {
+			let ebo = glc.create_buffer().unwrap();
+			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+			glc.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytemuck::cast_slice::<I, u8>(&buf), glow::STATIC_DRAW);
 			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
-		}
-		Ok(())
-	}
-	pub fn new(glc: Arc<Context>, buf: Vec<T>) -> Self {
+			ebo
+		};
+		let size = buf.len() as i32;
 		Self {
-			buf,
 			glc,
-			ebo: None,
+			ebo,
+			size,
+			_type: PhantomData,
 		}
 	}
 }
@@ -138,12 +170,11 @@ impl IndexBuffer<u32> {
 	}
 }
 
-impl<T> Drop for IndexBuffer<T> where T: IndexInteger + Pod {
+impl<I> Drop for IndexBuffer<I> where I : IndexInteger + Pod {
 	fn drop(&mut self) {
+		// println!("Drop IndexBuffer");
 		let glc = &self.glc;
-		if let Some(ebo) = self.ebo {
-			unsafe { glc.delete_buffer(ebo); }
-		}
+		unsafe { glc.delete_buffer(self.ebo); }
 	}
 }
 
@@ -155,6 +186,7 @@ pub struct Texture {
 
 impl Drop for Texture {
 	fn drop(&mut self) {
+		// println!("Drop Texture");
 		let glc = &self.glc;
 		unsafe {
 			glc.delete_texture(self.tex);
@@ -165,14 +197,13 @@ impl Drop for Texture {
 impl Texture {
 	pub fn try_from_texture(glc: Arc<Context>, tex: &RTexture) -> Result<Self, Box<dyn Error>> {
 		unsafe {
-			glc.active_texture(0);
 			let texture = glc.create_texture()?;
 			glc.bind_texture(glow::TEXTURE_2D, Some(texture));
-			let tex_iformat = match tex.texture_type {
+			let tex_iformat: i32 = match tex.texture_type {
 				TextureType::I32RGBA => glow::RGBA32I,
 				TextureType::U8RGBA => glow::RGBA,
 				TextureType::U8RGB => glow::RGB,
-			};
+			}.try_into().unwrap();
 			let tex_format = match tex.texture_type {
 				TextureType::I32RGBA => glow::RGBA_INTEGER,
 				TextureType::U8RGBA => glow::RGBA,
@@ -188,9 +219,10 @@ impl Texture {
 				TextureType::U8RGBA => (glow::LINEAR as i32, glow::LINEAR as i32),
 				TextureType::U8RGB => (glow::LINEAR as i32, glow::LINEAR as i32),
 			};
-			glc.tex_image_2d(glow::TEXTURE_2D, 0, tex_iformat as i32,
+			glc.tex_image_2d(glow::TEXTURE_2D, 0, tex_iformat,
 				tex.width as i32, tex.height as i32, 0, tex_format,
 				data_type, Some(&tex.data));
+			gl_get_error(&glc)?;
 			glc.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::REPEAT as i32);
 			glc.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
 			glc.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, min_filter);
@@ -296,6 +328,7 @@ impl ShaderProgram {
 
 impl Drop for ShaderProgram {
 	fn drop(&mut self) {
+		// println!("Drop ShaderProgram");
 		let glc = &self.glc;
 		unsafe {
 			for shader in self.shaders.iter().copied() {
@@ -348,7 +381,7 @@ impl TextureUnit {
 			_ => 0,
 		}
 	}
-	pub fn gl_uniform(self) -> i32 {
+	pub fn gl_u(self) -> i32 {
 		match self.0 {
 			x if x >= 1 && x <= 32 => x - 1,
 			_ => 0,
@@ -356,17 +389,18 @@ impl TextureUnit {
 	}
 }
 
-pub fn render<V, I>(
-	vertices: &VertexBuffer<V>,
+pub fn render<I>(
+	glc: &Context,
+	vertices: &VertexBuffer,
 	indices: &IndexBuffer<I>) -> Result<(), Box<dyn Error>>
 where
-	V : InterleavedVertexAttribute + Pod,
 	I : IndexInteger + Pod {
 	unsafe {
-		vertices.glc.bind_vertex_array(vertices.vao);
-		indices.glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, indices.ebo);
-		indices.glc.draw_elements(
-		glow::TRIANGLES, i32::try_from(indices.buf.len())?, I::GL_TYPE, 0);
+		glc.bind_vertex_array(Some(vertices.vao));
+		glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(indices.ebo));
+		glc.draw_elements(
+		glow::TRIANGLES, indices.size, I::GL_TYPE, 0);
+		gl_get_error(glc)?;
 	}
 	Ok(())
 }

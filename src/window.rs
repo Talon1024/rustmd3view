@@ -22,9 +22,6 @@ pub fn create_window<T>(el: &EventLoop<T>, title: Option<&str>) -> (WindowContex
 
 	let wc = unsafe { wc.make_current().unwrap() };
 
-	println!("Pixel format of the window's GL context: {:?}",
-		wc.get_pixel_format());
-
 	let glc = unsafe {
 		GLContext::from_loader_function(
 			|name| wc.get_proc_address(name))

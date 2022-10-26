@@ -3,6 +3,7 @@ mod window;
 mod res;
 mod eye;
 mod render;
+mod eutil;
 
 use eye::{Camera, OrbitCamera};
 use glow::{Context as GLContext, HasContext};
@@ -20,7 +21,7 @@ use std::{
 };
 use anyhow::Error as AError;
 use md3::MD3Model;
-use render::{Vertex, VertexBuffer, IndexBuffer, Texture, ShaderProgram, ShaderStage};
+use render::{VertexBuffer, IndexBuffer, Texture, ShaderProgram, ShaderStage};
 
 use egui_file::FileDialog;
 
@@ -36,7 +37,7 @@ struct App {
 	anim_playing: bool,
 	frame_range: Option<RangeInclusive<f32>>,
 	error_message: Option<String>,
-	model_vb: Option<VertexBuffer<Vertex>>,
+	model_vb: Option<VertexBuffer>,
 	model_ib: Option<IndexBuffer<u32>>,
 	model_tx: Option<Texture>,
 	model_an: Option<Texture>,
@@ -211,19 +212,20 @@ unsafe {
 
 		glc.active_texture(texture.gl_id());
 		glc.bind_texture(glow::TEXTURE_2D, Some(app.model_tx.as_ref().unwrap().tex()));
-		glc.uniform_1_i32(app.uniform_locations.get("tex"), texture.gl_uniform());
+		glc.uniform_1_i32(app.uniform_locations.get("tex"), texture.gl_u());
 
 		*texture += 1;
 
 		glc.active_texture(texture.gl_id());
-		glc.bind_texture(glow::TEXTURE_2D, Some(app.model_an.as_ref().unwrap().tex()));
-		glc.uniform_1_i32(app.uniform_locations.get("anim"), texture.gl_uniform());
+		glc.bind_texture(glow::TEXTURE_2D, app.model_an.as_ref().map(Texture::tex));
+		glc.uniform_1_i32(app.uniform_locations.get("anim"), texture.gl_u());
 
 		glc.uniform_1_f32(app.uniform_locations.get("frame"), app.current_frame);
 
 		glc.uniform_matrix_4_f32_slice(app.uniform_locations.get("eye"), false, app.camera.view_projection().as_ref());
 
 		if let Err(e) = render::render(
+			&glc,
 			app.model_vb.as_ref().unwrap(),
 			app.model_ib.as_ref().unwrap()) {
 			eprintln!("{:?}", e);
@@ -259,7 +261,7 @@ egui_glow.run(wc.window(), |ctx| {
 					if ui.button(play_button_text).clicked() {
 						app.anim_playing = !app.anim_playing;
 					}
-					ui.spacing_mut().slider_width = 200.;
+					ui.spacing_mut().slider_width = 400.;
 					ui.add(egui::Slider::new(&mut app.current_frame, range.clone()));
 				});
 			},
@@ -292,10 +294,10 @@ egui_glow.run(wc.window(), |ctx| {
 				app.model = Some(Box::new(model));
 				if let Some(surf) = app.model.as_ref().unwrap().surfaces.get(0) {
 					app.model_vb = Some(VertexBuffer::from_surface(Arc::clone(&glc), surf));
-					app.model_vb.as_mut().unwrap().upload().unwrap();
+					// app.model_vb.as_mut().unwrap().upload().unwrap();
 					app.model_ib = Some(IndexBuffer::from_surface(Arc::clone(&glc), surf));
-					app.model_ib.as_mut().unwrap().upload().unwrap();
-					app.model_an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).ok();
+					// app.model_ib.as_mut().unwrap().upload().unwrap();
+					app.model_an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
 					app.camera.position.z = -app.model.as_ref().unwrap().max_radius() * 2.;
 				}
 				Ok(())

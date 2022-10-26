@@ -16,3 +16,8 @@ What are the benefits and drawbacks?
 - ✔ Less CPU usage
 - ✔ Fewer uploads
 - ❌ More GPU usage... But GPUs have plenty of power to spare.
+
+Did you say "hack"?!
+--------------------
+
+By "hack", I mean a clever trick.

@@ -239,9 +239,9 @@ egui_glow.run(wc.window(), |ctx| {
 				app.current_frame = 0.;
 				app.model = Some(Box::new(model));
 				if let Some(surf) = app.model.as_ref().unwrap().surfaces.get(0) {
-					app.model_vb = Some(VertexBuffer::<Vertex>::from_surface(Arc::clone(&glc), surf));
+					app.model_vb = Some(VertexBuffer::from_surface(Arc::clone(&glc), surf));
 					app.model_vb.as_mut().unwrap().upload().unwrap();
-					app.model_ib = Some(IndexBuffer::<u32>::from_surface(Arc::clone(&glc), surf));
+					app.model_ib = Some(IndexBuffer::from_surface(Arc::clone(&glc), surf));
 					app.model_ib.as_mut().unwrap().upload().unwrap();
 					app.model_an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).ok();
 					app.camera.position.z = -app.model.as_ref().unwrap().max_radius() * 2.;

@@ -305,6 +305,9 @@ egui_glow.run(wc.window(), |ctx| {
 					if ui.button(play_button_text).clicked() {
 						app.anim_playing = !app.anim_playing;
 					}
+					if app.anim_playing {
+						app.current_frame = if let std::ops::Bound::Included(&fc) = range.end_bound() {(Instant::now() - _app_start).as_secs_f32() % fc} else {0.};
+					}
 					ui.spacing_mut().slider_width = 400.;
 					ui.add(egui::Slider::new(&mut app.current_frame, range.clone()));
 				});
@@ -334,6 +337,7 @@ egui_glow.run(wc.window(), |ctx| {
 				} else {
 					None
 				};
+				app.anim_playing = false;
 				app.current_frame = 0.;
 				app.model = Some(Box::new(model));
 				if let Some(surf) = app.model.as_ref().unwrap().surfaces.get(0) {

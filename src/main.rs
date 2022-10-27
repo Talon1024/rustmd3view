@@ -259,7 +259,7 @@ unsafe {
 			app.camera.longtude.cos() * app.camera.latitude.cos(),
 			app.camera.longtude.sin() * app.camera.latitude.cos(),
 			app.camera.latitude.sin(),
-		) * -25.;
+		) * -60.;
 		let window_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
 		// 160 pixels left from top right corner, 80 pixels down from top right corner
 		let trans = Mat4::from_translation(Vec3::new(1.0 - (320./window_size.width), 1.0 - (160./window_size.height), 0.));

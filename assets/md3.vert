@@ -10,7 +10,7 @@ out vec3 eyeNormal;
 out vec2 uv;
 
 const float MD3_XYZ_SCALE = 0.015625; //1./64
-const float BYTE_TAU = 40.58451048843331062106; //255./(2.*3.1415926535897932384626434)
+const float BYTE_TAU = 40.58451048843331062106; //255./(2.*pi)
 
 vec3[2] toPosNorm(ivec4 raw) {
 	vec3 xyz = vec3(raw.xyz) * MD3_XYZ_SCALE;

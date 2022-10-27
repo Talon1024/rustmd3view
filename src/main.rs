@@ -11,13 +11,14 @@ use glutin::event_loop::{EventLoopBuilder, ControlFlow};
 use glutin::event::Event;
 use res::AppResources;
 use std::{
-	collections::HashMap,
+	borrow::Cow,
 	error::Error,
 	f32::consts::FRAC_PI_2,
 	fs::File,
 	sync::Arc,
 	ops::RangeInclusive,
-	time::{Instant/* , Duration */},
+	ops::RangeBounds,
+	time::Instant,
 };
 use anyhow::Error as AError;
 use md3::MD3Model;
@@ -42,13 +43,15 @@ struct App {
 	model_tx: Option<Texture>,
 	model_an: Option<Texture>,
 	model_sd: Option<ShaderProgram>,
+	axes_vb: VertexBuffer,
+	axes_ib: IndexBuffer<u8>,
+	axes_sd: ShaderProgram,
 	camera: OrbitCamera,
 	controls: AppControls,
-	uniform_locations: HashMap<String, <GLContext as HasContext>::UniformLocation>,
 }
 
 impl App {
-	fn new() -> Self {
+	fn new(res: &AppResources, glc: &Arc<GLContext>) -> Self {
 		App {
 			open_file_dialog: FileDialog::open_file(None)
 				.show_rename(false)
@@ -64,9 +67,17 @@ impl App {
 			model_tx: None,
 			model_an: None,
 			model_sd: None,
+			axes_vb: VertexBuffer::new(Arc::clone(glc), Box::new(res::AXES_V)),
+			axes_ib: IndexBuffer::new(Arc::clone(glc), Vec::from(res::AXES_I)),
+			axes_sd: {
+				let mut sp = ShaderProgram::new(Arc::clone(glc)).unwrap();
+				sp.add_shader(ShaderStage::Vertex, &res.res_vertex_shader).unwrap();
+				sp.add_shader(ShaderStage::Fragment, &res.res_pixel_shader).unwrap();
+				sp.prepare().unwrap();
+				sp
+			},
 			controls: AppControls::default(),
 			camera: OrbitCamera::default(),
-			uniform_locations: HashMap::default(),
 		}
 	}
 }
@@ -126,24 +137,24 @@ const LOOK_LIMIT: f32 = {
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
+	let app_res = AppResources::try_load(None)?;
 	let el = EventLoopBuilder::new().build();
 	let (wc, glc) = window::create_window(&el, None);
 	let glc = Arc::new(glc);
 	let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
-	let mut app = App::new();
-	let app_res = AppResources::try_load(None)?;
+	let mut app = App::new(&app_res, &glc);
 	app.model_tx = Some(Texture::try_from_texture(Arc::clone(&glc), &app_res.null_texture)?);
 	app.model_sd = Some({
 		let mut sdr = ShaderProgram::new(Arc::clone(&glc))?;
 		sdr.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)?;
 		sdr.add_shader(ShaderStage::Fragment, &app_res.md3_pixel_shader)?;
 		sdr.prepare()?;
-		["anim", "eye", "frame", "tex"].into_iter().for_each(|uname|{
+		/* ["anim", "eye", "frame", "tex"].into_iter().for_each(|uname|{
 			let uloc = unsafe { glc.get_uniform_location(sdr.prog(), uname) };
 			if let Some(uloc) = uloc {
 				app.uniform_locations.insert(uname.to_string(), uloc);
 			}
-		});
+		}); */
 		sdr
 	});
 	app.camera.aspect = {
@@ -192,19 +203,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 					MouseMotion { delta: (dx, dy) } => {
 						let dx = dx as f32 * MOUSE_FACTOR;
 						let dy = dy as f32 * MOUSE_FACTOR;
-						app.camera.position.x += dx;
-						app.camera.position.y -= dy;
-						app.camera.position.y = app.camera.position.y.clamp(-LOOK_LIMIT, LOOK_LIMIT);
+						app.camera.longtude += dx;
+						app.camera.latitude -= dy;
+						app.camera.latitude = app.camera.latitude.clamp(-LOOK_LIMIT, LOOK_LIMIT);
 					},
 					_ => ()
 				}
 			}
 			Event::MainEventsCleared => {
-// DRAW MODEL
-// ==========================
+// CLEAR SCREEN BEFORE DRAWING ANYTHING
+// ==================================================================
 unsafe {
 	glc.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
 	glc.enable(glow::DEPTH_TEST);
+}
+// DRAW MODEL
+// ==================================================================
+unsafe {
+	glc.depth_func(glow::LESS);
 	if app.model.is_some() {
 		app.model_sd.as_ref().unwrap().activate().unwrap();
 
@@ -212,17 +228,17 @@ unsafe {
 
 		glc.active_texture(texture.gl_id());
 		glc.bind_texture(glow::TEXTURE_2D, Some(app.model_tx.as_ref().unwrap().tex()));
-		glc.uniform_1_i32(app.uniform_locations.get("tex"), texture.gl_u());
+		glc.uniform_1_i32(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("tex")).as_ref(), texture.gl_u());
 
 		*texture += 1;
 
 		glc.active_texture(texture.gl_id());
 		glc.bind_texture(glow::TEXTURE_2D, app.model_an.as_ref().map(Texture::tex));
-		glc.uniform_1_i32(app.uniform_locations.get("anim"), texture.gl_u());
+		glc.uniform_1_i32(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("anim")).as_ref(), texture.gl_u());
 
-		glc.uniform_1_f32(app.uniform_locations.get("frame"), app.current_frame);
+		glc.uniform_1_f32(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("frame")).as_ref(), app.current_frame);
 
-		glc.uniform_matrix_4_f32_slice(app.uniform_locations.get("eye"), false, app.camera.view_projection().as_ref());
+		glc.uniform_matrix_4_f32_slice(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("eye")).as_ref(), false, app.camera.view_projection().as_ref());
 
 		if let Err(e) = render::render(
 			&glc,
@@ -232,8 +248,36 @@ unsafe {
 		}
 	}
 }
+// DRAW AXES
+// ==================================================================
+unsafe {
+	glc.depth_func(glow::ALWAYS);
+	app.axes_sd.activate().unwrap();
+	let mvp = {
+		use glam::{Vec3, Mat4};
+		let eye = Vec3::new(
+			app.camera.longtude.cos() * app.camera.latitude.cos(),
+			app.camera.longtude.sin() * app.camera.latitude.cos(),
+			app.camera.latitude.sin(),
+		) * -25.;
+		let window_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
+		// 160 pixels left from top right corner, 80 pixels down from top right corner
+		let trans = Mat4::from_translation(Vec3::new(1.0 - (320./window_size.width), 1.0 - (160./window_size.height), 0.));
+		let scale = Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
+		let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
+		let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
+		trans * proj * view * scale
+	};
+	glc.uniform_matrix_4_f32_slice(app.axes_sd.uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
+	if let Err(e) = render::render(
+		&glc,
+		&app.axes_vb,
+		&app.axes_ib) {
+		eprintln!("{:?}", e);
+	}
+}
 // DRAW EGUI
-// ==========================
+// ==================================================================
 egui_glow.run(wc.window(), |ctx| {
 	egui::TopBottomPanel::top("menu_bar").show(&ctx, |ui| {
 		egui::menu::bar(ui, |ui| {
@@ -298,7 +342,7 @@ egui_glow.run(wc.window(), |ctx| {
 					app.model_ib = Some(IndexBuffer::from_surface(Arc::clone(&glc), surf));
 					// app.model_ib.as_mut().unwrap().upload().unwrap();
 					app.model_an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
-					app.camera.position.z = -app.model.as_ref().unwrap().max_radius() * 2.;
+					app.camera.distance = app.model.as_ref().unwrap().max_radius() * 2.;
 				}
 				Ok(())
 			}) {
@@ -324,7 +368,7 @@ egui_glow.run(wc.window(), |ctx| {
 });
 egui_glow.paint(wc.window());
 // SWAP BUFFERS
-// ============================
+// ==================================================================
 if let Err(e) = wc.swap_buffers() {
 	eprintln!("{:?}", e);
 }

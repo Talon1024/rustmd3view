@@ -7,5 +7,6 @@ out vec3 colour;
 
 void main() {
 	colour = aColour;
-	gl_Position = eye * aPosition;
+	vec4 position = vec4(aPosition, 1.);
+	gl_Position = eye * position;
 }

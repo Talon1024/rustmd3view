@@ -1,9 +1,16 @@
-use std::error::Error;
+use ahash::RandomState;
 use glam::{Vec2, Vec3};
 use crate::md3::MD3Surface;
 use crate::res::{Texture as RTexture, TextureType};
 use glow::{Context, HasContext};
-use std::{mem, sync::Arc, marker::PhantomData};
+use std::{
+	borrow::Cow,
+	error::Error,
+	mem,
+	sync::Arc,
+	marker::PhantomData,
+	collections::HashMap,
+};
 use shrinkwraprs::Shrinkwrap;
 use bytemuck::{Pod, Zeroable};
 use crate::eutil::gl_get_error;
@@ -86,7 +93,7 @@ pub struct VertexBuffer {
 }
 
 impl VertexBuffer {
-	pub fn new<T>(glc: Arc<Context>, buf: Vec<T>) -> Self
+	pub fn new<T>(glc: Arc<Context>, buf: Box<[T]>) -> Self
 	where T: InterleavedVertexAttribute + Pod {
 		let (vao, vbo) = unsafe {
 			let glc = &glc;
@@ -109,10 +116,10 @@ impl VertexBuffer {
 		}
 	}
 	pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
-		let buf = surf.texcoords.iter().enumerate()
+		let buf: Vec<VertexMD3> = surf.texcoords.iter().enumerate()
 			.map(|(index, uv)| VertexMD3 {index: index as u32, uv: uv.0})
 			.collect();
-		VertexBuffer::new(glc, buf)
+		VertexBuffer::new(glc, buf.into_boxed_slice())
 	}
 }
 
@@ -244,6 +251,7 @@ pub struct ShaderProgram {
 	glc: Arc<Context>,
 	prog: <Context as HasContext>::Program,
 	shaders: Vec<<Context as HasContext>::Shader>,
+	uniform_locations: HashMap<String, Option<<Context as HasContext>::UniformLocation>, RandomState>,
 	ready: bool,
 }
 
@@ -271,6 +279,7 @@ impl ShaderProgram {
 				glc,
 				prog,
 				shaders: vec![],
+				uniform_locations: HashMap::default(),
 				ready: false,
 			})
 		}
@@ -311,8 +320,15 @@ impl ShaderProgram {
 		self.ready = true;
 		Ok(())
 	}
-	pub fn prog(&self) -> <Context as HasContext>::Program {
-		self.prog
+	pub fn uniform_location(&mut self, name: Cow<str>) -> Option<<Context as HasContext>::UniformLocation> {
+		if let Some(value) = self.uniform_locations.get(name.as_ref()) {
+			value.clone()
+		} else {
+			let glc = &self.glc;
+			let value = unsafe { glc.get_uniform_location(self.prog, &name) };
+			self.uniform_locations.insert(name.to_string(), value);
+			value.clone()
+		}
 	}
 	pub fn activate(&self) -> Result<(), String> {
 		if !self.ready {

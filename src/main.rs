@@ -85,6 +85,7 @@ impl TextureCache {
 #[derive(Debug, Clone, Copy, Default)]
 struct AppControls {
 	lmb_dragging: bool,
+	rmb_dragging: bool,
 }
 
 struct App {
@@ -232,22 +233,32 @@ fn main() -> Result<(), Box<dyn Error>> {
 						app.camera.aspect = logical_size.width / logical_size.height;
 					},
 					MouseInput {state, button, .. } => {
-						if button == MouseButton::Left {
+						match button {
+							MouseButton::Left => {
 							app.controls.lmb_dragging = match state {
 								ElementState::Pressed => true,
 								ElementState::Released => false,
 							};
+							},
+							MouseButton::Right => {
+							app.controls.rmb_dragging = match state {
+								ElementState::Pressed => true,
+								ElementState::Released => false,
+							};
+							},
+							_ => (),
 						}
 					},
 					CursorLeft{..} => {
 						app.controls.lmb_dragging = false;
+						app.controls.rmb_dragging = false;
 					},
 					_ => (),
 				}
 			},
 			Event::DeviceEvent {event, ..} => {
 				use glutin::event::DeviceEvent::*;
-				if !app.controls.lmb_dragging { return; }
+				if app.controls.lmb_dragging {
 				match event {
 					MouseMotion { delta: (dx, dy) } => {
 						let dx = dx as f32 * MOUSE_FACTOR;
@@ -257,6 +268,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 						app.camera.latitude = app.camera.latitude.clamp(-LOOK_LIMIT, LOOK_LIMIT);
 					},
 					_ => ()
+				}
+				}
+				if app.controls.rmb_dragging {
+				match event {
+					MouseMotion { delta: (_dx, dy) } => {
+						let dy = dy as f32 * MOUSE_FACTOR * app.camera.distance.max(1.);
+						app.camera.distance += dy;
+					},
+					_ => (),
+				}
 				}
 			}
 			Event::MainEventsCleared => {

@@ -34,7 +34,7 @@ impl Camera for OrbitCamera {
 			self.latitude.sin(),
 		) * -self.distance;
 		let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
-		let proj = Mat4::perspective_lh(self.fov, self.aspect, 0.25, 512.);
+		let proj = Mat4::perspective_lh(self.fov, self.aspect, 0.25, 4096.);
 		proj * view
 	}
 }

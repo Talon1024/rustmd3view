@@ -215,21 +215,29 @@ impl Texture {
 				SurfaceType::I32RGBA => glow::RGBA32I,
 				SurfaceType::U8RGBA => glow::RGBA32F,
 				SurfaceType::U8RGB => glow::RGB32F,
+				SurfaceType::U8R => glow::R32F,
+				SurfaceType::U8RG => glow::RG32F,
 			}.try_into().unwrap();
 			let tex_format = match tex.texture_type {
 				SurfaceType::I32RGBA => glow::RGBA_INTEGER,
 				SurfaceType::U8RGBA => glow::RGBA,
 				SurfaceType::U8RGB => glow::RGB,
+				SurfaceType::U8R => glow::RED,
+				SurfaceType::U8RG => glow::RG,
 			};
 			let data_type = match tex.texture_type {
 				SurfaceType::I32RGBA => glow::INT,
 				SurfaceType::U8RGBA => glow::UNSIGNED_BYTE,
 				SurfaceType::U8RGB => glow::UNSIGNED_BYTE,
+				SurfaceType::U8R => glow::UNSIGNED_BYTE,
+				SurfaceType::U8RG => glow::UNSIGNED_BYTE,
 			};
 			let (min_filter, mag_filter) = match tex.texture_type {
 				SurfaceType::I32RGBA => (glow::NEAREST as i32, glow::NEAREST as i32),
 				SurfaceType::U8RGBA => (glow::LINEAR as i32, glow::LINEAR as i32),
 				SurfaceType::U8RGB => (glow::LINEAR as i32, glow::LINEAR as i32),
+				SurfaceType::U8R => (glow::LINEAR as i32, glow::LINEAR as i32),
+				SurfaceType::U8RG => (glow::LINEAR as i32, glow::LINEAR as i32),
 			};
 			glc.tex_image_2d(glow::TEXTURE_2D, 0, tex_iformat,
 				tex.width as i32, tex.height as i32, 0, tex_format,

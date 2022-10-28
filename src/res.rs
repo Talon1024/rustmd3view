@@ -15,6 +15,8 @@ pub enum SurfaceType {
 	#[default]
 	U8RGBA,
 	U8RGB,
+	U8R,
+	U8RG,
 }
 
 impl SurfaceType {
@@ -23,6 +25,8 @@ impl SurfaceType {
 			SurfaceType::I32RGBA => 4,
 			SurfaceType::U8RGBA => 4,
 			SurfaceType::U8RGB => 3,
+			SurfaceType::U8R => 1,
+			SurfaceType::U8RG => 2,
 		}
 	}
 }
@@ -39,25 +43,25 @@ impl Surface {
 	pub fn read_png(path: impl AsRef<Path>) -> Result<Surface, Box<dyn Error>> {
 		use png::BitDepth::*;
 		use png::ColorType::*;
+		use png::Transformations;
 		use SurfaceType::*;
-		let png_decoder = Decoder::new(File::open(path)?);
+		let mut png_decoder = Decoder::new(File::open(path)?);
+		png_decoder.set_transformations(Transformations::normalize_to_color8());
 		let mut png_reader = png_decoder.read_info()?;
-		let PNGInfo {width, height, bit_depth, color_type, ..} = *png_reader.info();
+		let PNGInfo {width, height, ..} = *png_reader.info();
+		let (color_type, bit_depth) = png_reader.output_color_type();
 		Ok(Surface {
 			width,
 			height,
 			texture_type: match (bit_depth, color_type) {
 				(Eight, Rgb) => Ok(U8RGB),
 				(Eight, Rgba) => Ok(U8RGBA),
+				(Eight, Grayscale) => Ok(U8R),
+				(Eight, GrayscaleAlpha) => Ok(U8RG),
 				_ => Err("Unsupported texture type")
 			}?,
 			data: {
-				let channels = match color_type {
-					Rgb => Ok(3),
-					Rgba => Ok(4),
-					_ => Err("Unsupported color type"),
-				}?;
-				let mut pixels = vec![0; (width * height * channels) as usize];
+				let mut pixels = vec![0; png_reader.output_buffer_size()];
 				png_reader.next_frame(&mut pixels)?;
 				pixels.into_boxed_slice()
 			},

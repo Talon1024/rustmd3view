@@ -12,17 +12,19 @@ use glutin::event::Event;
 use res::AppResources;
 use std::{
 	borrow::Cow,
+	cell::RefCell,
 	error::Error,
 	f32::consts::FRAC_PI_2,
 	fs::File,
 	sync::Arc,
 	ops::RangeInclusive,
 	ops::RangeBounds,
+	rc::Rc,
 	time::Instant,
 };
 use anyhow::Error as AError;
 use md3::MD3Model;
-use render::{VertexBuffer, IndexBuffer, Texture, ShaderProgram, ShaderStage};
+use render::{BasicModel, BufferModel, VertexBuffer, IndexBuffer, Texture, ShaderProgram, TextureUnit, ShaderStage};
 
 use egui_file::FileDialog;
 
@@ -33,19 +35,13 @@ struct AppControls {
 
 struct App {
 	open_file_dialog: FileDialog,
-	model: Option<Box<MD3Model>>,
+	model_data: Option<Box<MD3Model>>,
 	current_frame: f32,
 	anim_playing: bool,
 	frame_range: Option<RangeInclusive<f32>>,
 	error_message: Option<String>,
-	model_vb: Option<VertexBuffer>,
-	model_ib: Option<IndexBuffer<u32>>,
-	model_tx: Option<Texture>,
-	model_an: Option<Texture>,
-	model_sd: Option<ShaderProgram>,
-	axes_vb: VertexBuffer,
-	axes_ib: IndexBuffer<u8>,
-	axes_sd: ShaderProgram,
+	models: Vec<BufferModel<u32>>,
+	axes: BasicModel<u8>,
 	camera: OrbitCamera,
 	controls: AppControls,
 }
@@ -57,24 +53,22 @@ impl App {
 				.show_rename(false)
 				.show_new_folder(false)
 				.filter(String::from("md3")),
-			model: None,
+			model_data: None,
 			current_frame: 0.,
 			anim_playing: false,
 			frame_range: None,
 			error_message: None,
-			model_vb: None,
-			model_ib: None,
-			model_tx: None,
-			model_an: None,
-			model_sd: None,
-			axes_vb: VertexBuffer::new(Arc::clone(glc), Box::new(res::AXES_V)),
-			axes_ib: IndexBuffer::new(Arc::clone(glc), Vec::from(res::AXES_I)),
-			axes_sd: {
-				let mut sp = ShaderProgram::new(Arc::clone(glc)).unwrap();
-				sp.add_shader(ShaderStage::Vertex, &res.res_vertex_shader).unwrap();
-				sp.add_shader(ShaderStage::Fragment, &res.res_pixel_shader).unwrap();
-				sp.prepare().unwrap();
-				sp
+			models: vec![],
+			axes: BasicModel {
+				vertex: VertexBuffer::new(Arc::clone(glc), Box::new(res::AXES_V)),
+				index: IndexBuffer::new(Arc::clone(glc), Vec::from(res::AXES_I)),
+				shader: {
+					let mut sp = ShaderProgram::new(Arc::clone(glc)).unwrap();
+					sp.add_shader(ShaderStage::Vertex, &res.res_vertex_shader).unwrap();
+					sp.add_shader(ShaderStage::Fragment, &res.res_pixel_shader).unwrap();
+					sp.prepare().unwrap();
+					Rc::new(RefCell::new(sp))
+				},
 			},
 			controls: AppControls::default(),
 			camera: OrbitCamera::default(),
@@ -143,8 +137,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let glc = Arc::new(glc);
 	let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
 	let mut app = App::new(&app_res, &glc);
-	app.model_tx = Some(Texture::try_from_texture(Arc::clone(&glc), &app_res.null_texture)?);
-	app.model_sd = Some({
+	let md3_shader = Rc::new(RefCell::new({
 		let mut sdr = ShaderProgram::new(Arc::clone(&glc))?;
 		sdr.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)?;
 		sdr.add_shader(ShaderStage::Fragment, &app_res.md3_pixel_shader)?;
@@ -156,7 +149,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 			}
 		}); */
 		sdr
-	});
+	}));
 	app.camera.aspect = {
 		let logical_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
 		logical_size.width / logical_size.height
@@ -217,42 +210,41 @@ unsafe {
 	glc.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT);
 	glc.enable(glow::DEPTH_TEST);
 }
-// DRAW MODEL
+// DRAW MODELS
 // ==================================================================
 unsafe {
 	glc.depth_func(glow::LESS);
-	if app.model.is_some() {
-		app.model_sd.as_ref().unwrap().activate().unwrap();
-
-		let mut texture = app_res.null_texunit;
+	app.models.iter().for_each(|model| {
+		model.base.shader.borrow().activate().unwrap();
+		let mut texture = TextureUnit(1);
 
 		glc.active_texture(texture.gl_id());
-		glc.bind_texture(glow::TEXTURE_2D, Some(app.model_tx.as_ref().unwrap().tex()));
-		glc.uniform_1_i32(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("tex")).as_ref(), texture.gl_u());
+		glc.bind_texture(glow::TEXTURE_2D, Some(model.skin.tex()));
+		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("tex")).as_ref(), texture.gl_u());
 
 		*texture += 1;
 
 		glc.active_texture(texture.gl_id());
-		glc.bind_texture(glow::TEXTURE_2D, app.model_an.as_ref().map(Texture::tex));
-		glc.uniform_1_i32(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("anim")).as_ref(), texture.gl_u());
+		glc.bind_texture(glow::TEXTURE_2D, model.animation.as_ref().map(Texture::tex));
+		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("anim")).as_ref(), texture.gl_u());
 
-		glc.uniform_1_f32(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("frame")).as_ref(), app.current_frame);
+		glc.uniform_1_f32(model.base.shader.borrow_mut().uniform_location(Cow::from("frame")).as_ref(), app.current_frame);
 
-		glc.uniform_matrix_4_f32_slice(app.model_sd.as_mut().unwrap().uniform_location(Cow::from("eye")).as_ref(), false, app.camera.view_projection().as_ref());
+		glc.uniform_matrix_4_f32_slice(model.base.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, app.camera.view_projection().as_ref());
 
 		if let Err(e) = render::render(
 			&glc,
-			app.model_vb.as_ref().unwrap(),
-			app.model_ib.as_ref().unwrap()) {
+			&model.base.vertex,
+			&model.base.index) {
 			eprintln!("{:?}", e);
 		}
-	}
+	});
 }
 // DRAW AXES
 // ==================================================================
 unsafe {
 	glc.depth_func(glow::ALWAYS);
-	app.axes_sd.activate().unwrap();
+	app.axes.shader.borrow().activate().unwrap();
 	let mvp = {
 		use glam::{Vec3, Mat4};
 		let eye = Vec3::new(
@@ -268,11 +260,11 @@ unsafe {
 		let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
 		trans * proj * view * scale
 	};
-	glc.uniform_matrix_4_f32_slice(app.axes_sd.uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
+	glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
 	if let Err(e) = render::render(
 		&glc,
-		&app.axes_vb,
-		&app.axes_ib) {
+		&app.axes.vertex,
+		&app.axes.index) {
 		eprintln!("{:?}", e);
 	}
 }
@@ -339,15 +331,23 @@ egui_glow.run(wc.window(), |ctx| {
 				};
 				app.anim_playing = false;
 				app.current_frame = 0.;
-				app.model = Some(Box::new(model));
-				if let Some(surf) = app.model.as_ref().unwrap().surfaces.get(0) {
-					app.model_vb = Some(VertexBuffer::from_surface(Arc::clone(&glc), surf));
-					// app.model_vb.as_mut().unwrap().upload().unwrap();
-					app.model_ib = Some(IndexBuffer::from_surface(Arc::clone(&glc), surf));
-					// app.model_ib.as_mut().unwrap().upload().unwrap();
-					app.model_an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
-					app.camera.distance = app.model.as_ref().unwrap().max_radius() * 2.;
-				}
+				app.model_data = Some(Box::new(model));
+				app.models = app.model_data.as_ref().unwrap().surfaces
+				.iter().map(|surf| {
+					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
+					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
+					let an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
+					app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
+					BufferModel {
+						base: BasicModel {
+							vertex: vb,
+							index: ib,
+							shader: Rc::clone(&md3_shader)
+						},
+						skin: Texture::try_from_texture(Arc::clone(&glc), &app_res.null_texture).unwrap(),
+						animation: an,
+					}
+				}).collect();
 				Ok(())
 			}) {
 				app.error_message = Some(format!("Error reading file {}:\n{}", fpath.display(), e));
@@ -356,7 +356,7 @@ egui_glow.run(wc.window(), |ctx| {
 	}
 	egui::SidePanel::right("infoz").show(ctx, |ui| {
 		ui.heading("Shaders");
-		if let Some(model) = app.model.as_ref() {
+		if let Some(model) = app.model_data.as_ref() {
 			model.surfaces.iter().enumerate().for_each(|(index, surf)| {
 				egui::CollapsingHeader::new(format!("Surface {}", index)).show(ui, |ui| {
 					surf.shaders.iter().for_each(|sdr| {

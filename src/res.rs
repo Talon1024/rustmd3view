@@ -4,7 +4,7 @@ use std::path::Path;
 use std::env;
 use std::fs::{self, File};
 use png::{Decoder, Info as PNGInfo};
-use crate::render::{TextureUnit, VertexRes};
+use crate::render::VertexRes;
 use glam::Vec3;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -65,7 +65,6 @@ impl Texture {
 
 pub struct AppResources {
 	pub null_texture: Texture,
-	pub null_texunit: TextureUnit,
 	pub md3_pixel_shader: String,
 	pub md3_vertex_shader: String,
 	pub res_pixel_shader: String,
@@ -89,7 +88,6 @@ impl AppResources {
 		let res_pixel_shader = fs::read_to_string(path.join("res.frag"))?;
 		Ok(Box::new(AppResources {
 			null_texture,
-			null_texunit: TextureUnit(1),
 			md3_pixel_shader,
 			md3_vertex_shader,
 			res_pixel_shader,
@@ -98,7 +96,7 @@ impl AppResources {
 	}
 }
 
-// A nice blue colour is (48, 112, 255) = (0.1875, 0.4375, 1.0)
+// A nice blue colour is (32, 144, 255) = (0.125, 0.5625, 1.0)
 pub const AXES_V : [VertexRes; 24] = [
 VertexRes { position: Vec3::new(0.0, 50.0, 0.0), colour: Vec3::new(0.0, 1.0, 0.0) },
 VertexRes { position: Vec3::new(0.0, 50.0, 1.0), colour: Vec3::new(0.0, 1.0, 0.0) },
@@ -116,14 +114,14 @@ VertexRes { position: Vec3::new(1.0, 1.0, 1.0), colour: Vec3::new(1.0, 0.0, 0.0)
 VertexRes { position: Vec3::new(1.0, 1.0, 0.0), colour: Vec3::new(1.0, 0.0, 0.0) },
 VertexRes { position: Vec3::new(1.0, 0.0, 1.0), colour: Vec3::new(1.0, 0.0, 0.0) },
 VertexRes { position: Vec3::new(0.0, 0.0, 0.0), colour: Vec3::new(1.0, 0.0, 0.0) },
-VertexRes { position: Vec3::new(1.0, 1.0, 50.0), colour: Vec3::new(0.1875, 0.4375, 1.0) },
-VertexRes { position: Vec3::new(0.0, 1.0, 50.0), colour: Vec3::new(0.1875, 0.4375, 1.0) },
-VertexRes { position: Vec3::new(0.0, 0.0, 50.0), colour: Vec3::new(0.1875, 0.4375, 1.0) },
-VertexRes { position: Vec3::new(1.0, 0.0, 50.0), colour: Vec3::new(0.1875, 0.4375, 1.0) },
-VertexRes { position: Vec3::new(0.0, 1.0, 1.0), colour: Vec3::new(0.1875, 0.4375, 1.0) },
-VertexRes { position: Vec3::new(1.0, 1.0, 1.0), colour: Vec3::new(0.1875, 0.4375, 1.0) },
-VertexRes { position: Vec3::new(0.0, 0.0, 0.0), colour: Vec3::new(0.1875, 0.4375, 1.0) },
-VertexRes { position: Vec3::new(1.0, 0.0, 1.0), colour: Vec3::new(0.1875, 0.4375, 1.0) }
+VertexRes { position: Vec3::new(1.0, 1.0, 50.0), colour: Vec3::new(0.125, 0.5625, 1.0) },
+VertexRes { position: Vec3::new(0.0, 1.0, 50.0), colour: Vec3::new(0.125, 0.5625, 1.0) },
+VertexRes { position: Vec3::new(0.0, 0.0, 50.0), colour: Vec3::new(0.125, 0.5625, 1.0) },
+VertexRes { position: Vec3::new(1.0, 0.0, 50.0), colour: Vec3::new(0.125, 0.5625, 1.0) },
+VertexRes { position: Vec3::new(0.0, 1.0, 1.0), colour: Vec3::new(0.125, 0.5625, 1.0) },
+VertexRes { position: Vec3::new(1.0, 1.0, 1.0), colour: Vec3::new(0.125, 0.5625, 1.0) },
+VertexRes { position: Vec3::new(0.0, 0.0, 0.0), colour: Vec3::new(0.125, 0.5625, 1.0) },
+VertexRes { position: Vec3::new(1.0, 0.0, 1.0), colour: Vec3::new(0.125, 0.5625, 1.0) }
 ];
 pub const AXES_I : [u8; 90] = [0, 1, 2, 0, 2, 3, 4, 1, 0, 4, 0, 5, 6, 2, 1, 6, 1, 4, 7, 3, 2, 7, 2, 6, 5, 0, 3, 5, 3, 7, 8, 9, 10, 8, 10, 11, 12, 9, 8, 12, 8, 13, 14, 10, 9, 14, 9, 12, 15, 11, 10, 15, 10, 14, 13, 8, 11, 13, 11, 15, 16, 17, 18, 16, 18, 19, 20, 17, 16, 20, 16, 21, 22, 18, 17, 22, 17, 20, 23, 19, 18, 23, 18, 22, 21, 16, 19, 21, 19, 23];
 

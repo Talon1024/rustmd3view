@@ -7,6 +7,8 @@ use std::{
 	borrow::Cow,
 	error::Error,
 	mem,
+	rc::Rc,
+	cell::RefCell,
 	sync::Arc,
 	marker::PhantomData,
 	collections::HashMap,
@@ -148,7 +150,7 @@ pub struct IndexBuffer<I> where I : IndexInteger + Pod {
 	glc: Arc<Context>,
 	ebo: <Context as HasContext>::Buffer,
 	size: i32,
-	_type: PhantomData<I>
+	itype: PhantomData<I> // Used for the index data type (see render function)
 }
 
 impl<I> IndexBuffer<I> where I : IndexInteger + Pod {
@@ -165,7 +167,7 @@ impl<I> IndexBuffer<I> where I : IndexInteger + Pod {
 			glc,
 			ebo,
 			size,
-			_type: PhantomData,
+			itype: PhantomData,
 		}
 	}
 }
@@ -317,9 +319,19 @@ impl ShaderProgram {
 			}
 			self.shaders.clear();
 		}
+		#[cfg(feature = "preload_uniforms")]
+		unsafe {
+			let num_uniforms = glc.get_active_uniforms(self.prog);
+			for uindex in 0..num_uniforms {
+				let uniform = glc.get_active_uniform(self.prog, uindex).unwrap().name;
+				let location = glc.get_uniform_location(self.prog, &uniform);
+				self.uniform_locations.insert(uniform, location);
+			}
+		}
 		self.ready = true;
 		Ok(())
 	}
+	#[cfg(not(feature = "preload_uniforms"))]
 	pub fn uniform_location(&mut self, name: Cow<str>) -> Option<<Context as HasContext>::UniformLocation> {
 		if let Some(value) = self.uniform_locations.get(name.as_ref()) {
 			value.clone()
@@ -329,6 +341,10 @@ impl ShaderProgram {
 			self.uniform_locations.insert(name.to_string(), value);
 			value.clone()
 		}
+	}
+	#[cfg(feature = "preload_uniforms")]
+	pub fn uniform_location(&self, name: Cow<str>) -> Option<<Context as HasContext>::UniformLocation> {
+		self.uniform_locations.get(name.as_ref()).cloned()
 	}
 	pub fn activate(&self) -> Result<(), String> {
 		if !self.ready {
@@ -403,6 +419,18 @@ impl TextureUnit {
 			_ => 0,
 		}.into()
 	}
+}
+
+pub struct BasicModel<I> where I : IndexInteger + Pod {
+	pub vertex: VertexBuffer,
+	pub index: IndexBuffer<I>,
+	pub shader: Rc<RefCell<ShaderProgram>>,
+}
+
+pub struct BufferModel<I> where I : IndexInteger + Pod {
+	pub base: BasicModel<I>,
+	pub skin: Texture,
+	pub animation: Option<Texture>,
 }
 
 pub fn render<I>(

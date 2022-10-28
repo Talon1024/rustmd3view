@@ -5,20 +5,25 @@ mod eye;
 mod render;
 mod eutil;
 
+use ahash::RandomState;
 use eye::{Camera, OrbitCamera};
 use glow::{Context as GLContext, HasContext};
 use glutin::event_loop::{EventLoopBuilder, ControlFlow};
 use glutin::event::Event;
-use res::AppResources;
+use res::{AppResources, Surface};
+use shrinkwraprs::Shrinkwrap;
 use std::{
 	borrow::Cow,
 	cell::RefCell,
+	collections::HashMap,
 	error::Error,
 	f32::consts::FRAC_PI_2,
+	ffi::OsString,
 	fs::File,
 	sync::Arc,
 	ops::RangeInclusive,
 	ops::RangeBounds,
+	path::Path,
 	rc::Rc,
 	time::Instant,
 };
@@ -27,6 +32,57 @@ use md3::MD3Model;
 use render::{BasicModel, BufferModel, VertexBuffer, IndexBuffer, Texture, ShaderProgram, TextureUnit, ShaderStage};
 
 use egui_file::FileDialog;
+
+#[derive(Shrinkwrap)]
+struct TextureCache {
+	cache: HashMap<String, Rc<Texture>, RandomState>,
+}
+
+const NULL_TEXTURE_NAME: &str = "__null_texture__";
+
+impl TextureCache {
+	fn new(glc: Arc<GLContext>, null_texture: &Surface) -> Self {
+		let mut cache = HashMap::default();
+		cache.insert(String::from(NULL_TEXTURE_NAME), Rc::new(Texture::try_from_surface(glc, null_texture).unwrap()));
+		Self { cache }
+	}
+	fn get(&mut self, glc: Arc<GLContext>, path: &dyn AsRef<Path>) -> Rc<Texture> {
+		let null_key = Cow::from(NULL_TEXTURE_NAME);
+		let path = path.as_ref();
+		let key = path.to_string_lossy();
+		if let Some(r) = self.cache.get(key.as_ref()) {
+			return Rc::clone(r);
+		}
+		match Surface::read_png(path) {
+			Ok(s) => {
+				let texture = Texture::try_from_surface(glc, &s);
+				match texture {
+					Ok(t) => {
+						let txref = Rc::new(t);
+						let myref = Rc::clone(&txref);
+						let path = path.to_string_lossy();
+						self.cache.insert(path.into_owned(), txref);
+						myref
+					},
+					Err(e) => {
+						eprintln!("Could not load texture {}: {:?}", path.display(), e);
+						Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap())
+					},
+				}
+			},
+			Err(e) => {
+				eprintln!("Could not load texture {}: {:?}", path.display(), e);
+				Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap())
+			},
+		}
+	}
+	fn clear(&mut self) {
+		let non_null_textures: Box<[String]> = self.cache.keys().cloned()
+			.filter(|f| f != NULL_TEXTURE_NAME).collect();
+		non_null_textures.into_iter().map(String::as_str)
+			.for_each(|k| {self.cache.remove(k);});
+	}
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 struct AppControls {
@@ -44,6 +100,7 @@ struct App {
 	axes: BasicModel<u8>,
 	camera: OrbitCamera,
 	controls: AppControls,
+	texture_cache: TextureCache,
 }
 
 impl App {
@@ -72,6 +129,7 @@ impl App {
 			},
 			controls: AppControls::default(),
 			camera: OrbitCamera::default(),
+			texture_cache: TextureCache::new(Arc::clone(glc), &res.null_surface),
 		}
 	}
 }
@@ -323,12 +381,15 @@ egui_glow.run(wc.window(), |ctx| {
 				.map_err(AError::from).and_then(|mut f| {
 				md3::read_md3(&mut f).map_err(AError::from)
 			}).and_then(|model| {
+				#[cfg(feature = "log_successful_load")]
+				println!("Model {} loaded successfully!", fpath.display());
 				let num_frames = model.frames.len();
 				app.frame_range = if num_frames > 1 {
 					Some(RangeInclusive::new(0., (num_frames - 1) as f32))
 				} else {
 					None
 				};
+				app.texture_cache.clear();
 				app.anim_playing = false;
 				app.current_frame = 0.;
 				app.model_data = Some(Box::new(model));
@@ -336,15 +397,20 @@ egui_glow.run(wc.window(), |ctx| {
 				.iter().map(|surf| {
 					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
 					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
-					let an = Texture::try_from_texture(Arc::clone(&glc), &surf.make_animation_texture()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
+					let an = Texture::try_from_surface(Arc::clone(&glc), &surf.make_animation_surface()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
 					app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
 					BufferModel {
 						base: BasicModel {
 							vertex: vb,
 							index: ib,
-							shader: Rc::clone(&md3_shader)
+							shader: Rc::clone(&md3_shader),
 						},
-						skin: Texture::try_from_texture(Arc::clone(&glc), &app_res.null_texture).unwrap(),
+						skin: app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
+							Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
+							String::from_utf8_lossy(&s.name)
+							.trim_matches(|c| c == char::from_u32(0).unwrap())
+							.trim())))
+						).unwrap_or(Cow::from(OsString::new()))),
 						animation: an,
 					}
 				}).collect();

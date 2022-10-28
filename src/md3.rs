@@ -1,7 +1,7 @@
 use glam::f32::{Vec2, Vec3, Mat3};
 use std::io::{Read, Seek, SeekFrom};
 use thiserror::Error;
-use crate::res::{Texture, TextureType};
+use crate::res::{Surface, SurfaceType};
 
 pub const MD3_ID: [u8; 4] = *b"IDP3";
 pub const MD3_VERSION: i32 = 15;
@@ -52,16 +52,16 @@ pub struct MD3Surface {
 }
 
 impl MD3Surface {
-	pub fn make_animation_texture(&self) -> Texture {
+	pub fn make_animation_surface(&self) -> Surface {
 		let width = self.num_verts;
 		let height = self.num_frames;
-		let tex_type = TextureType::I32RGBA;
+		let tex_type = SurfaceType::I32RGBA;
 		let channels = tex_type.channels() as usize;
 		let mut data = vec![0i32; width * height * channels];
 		data.chunks_exact_mut(channels).enumerate().for_each(|(i, px)| {
 			px.copy_from_slice(&self.vertices[i].to_pixel());
 		});
-		Texture {
+		Surface {
 			width: width as u32,
 			height: height as u32,
 			texture_type: tex_type,

@@ -1,47 +1,49 @@
-use std::borrow::Cow;
-use std::error::Error;
-use std::path::Path;
-use std::env;
-use std::fs::{self, File};
+use std::{
+	borrow::Cow,
+	error::Error,
+	env,
+	path::Path,
+	fs::{self, File}
+};
 use png::{Decoder, Info as PNGInfo};
 use crate::render::VertexRes;
 use glam::Vec3;
 
 #[derive(Debug, Clone, Copy, Default)]
-pub enum TextureType {
+pub enum SurfaceType {
 	I32RGBA,
 	#[default]
 	U8RGBA,
 	U8RGB,
 }
 
-impl TextureType {
+impl SurfaceType {
 	pub fn channels(&self) -> u8 {
 		match self {
-			TextureType::I32RGBA => 4,
-			TextureType::U8RGBA => 4,
-			TextureType::U8RGB => 3,
+			SurfaceType::I32RGBA => 4,
+			SurfaceType::U8RGBA => 4,
+			SurfaceType::U8RGB => 3,
 		}
 	}
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Texture {
+pub struct Surface {
 	pub width: u32,
 	pub height: u32,
-	pub texture_type: TextureType,
+	pub texture_type: SurfaceType,
 	pub data: Box<[u8]>,
 }
 
-impl Texture {
-	pub fn read_png(path: impl AsRef<Path>) -> Result<Texture, Box<dyn Error>> {
+impl Surface {
+	pub fn read_png(path: impl AsRef<Path>) -> Result<Surface, Box<dyn Error>> {
 		use png::BitDepth::*;
 		use png::ColorType::*;
-		use TextureType::*;
+		use SurfaceType::*;
 		let png_decoder = Decoder::new(File::open(path)?);
 		let mut png_reader = png_decoder.read_info()?;
 		let PNGInfo {width, height, bit_depth, color_type, ..} = *png_reader.info();
-		Ok(Texture {
+		Ok(Surface {
 			width,
 			height,
 			texture_type: match (bit_depth, color_type) {
@@ -64,7 +66,7 @@ impl Texture {
 }
 
 pub struct AppResources {
-	pub null_texture: Texture,
+	pub null_surface: Surface,
 	pub md3_pixel_shader: String,
 	pub md3_vertex_shader: String,
 	pub res_pixel_shader: String,
@@ -81,13 +83,13 @@ impl AppResources {
 				Cow::from(pwd)
 			},
 		};
-		let null_texture = Texture::read_png(path.join("null.png"))?;
+		let null_texture = Surface::read_png(path.join("null.png"))?;
 		let md3_vertex_shader = fs::read_to_string(path.join("md3.vert"))?;
 		let md3_pixel_shader = fs::read_to_string(path.join("md3.frag"))?;
 		let res_vertex_shader = fs::read_to_string(path.join("res.vert"))?;
 		let res_pixel_shader = fs::read_to_string(path.join("res.frag"))?;
 		Ok(Box::new(AppResources {
-			null_texture,
+			null_surface: null_texture,
 			md3_pixel_shader,
 			md3_vertex_shader,
 			res_pixel_shader,

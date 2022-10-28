@@ -1,7 +1,7 @@
 use ahash::RandomState;
 use glam::{Vec2, Vec3};
 use crate::md3::MD3Surface;
-use crate::res::{Texture as RTexture, TextureType};
+use crate::res::{Surface, SurfaceType};
 use glow::{Context, HasContext};
 use std::{
 	borrow::Cow,
@@ -127,7 +127,8 @@ impl VertexBuffer {
 
 impl Drop for VertexBuffer {
 	fn drop(&mut self) {
-		// println!("Drop VertexBuffer");
+		#[cfg(feature = "log_drop_gl_resources")]
+		println!("Drop VertexBuffer");
 		let glc = &self.glc;
 		unsafe {
 			glc.delete_vertex_array(self.vao);
@@ -181,7 +182,8 @@ impl IndexBuffer<u32> {
 
 impl<I> Drop for IndexBuffer<I> where I : IndexInteger + Pod {
 	fn drop(&mut self) {
-		// println!("Drop IndexBuffer");
+		#[cfg(feature = "log_drop_gl_resources")]
+		println!("Drop IndexBuffer");
 		let glc = &self.glc;
 		unsafe { glc.delete_buffer(self.ebo); }
 	}
@@ -195,7 +197,8 @@ pub struct Texture {
 
 impl Drop for Texture {
 	fn drop(&mut self) {
-		// println!("Drop Texture");
+		#[cfg(feature = "log_drop_gl_resources")]
+		println!("Drop Texture");
 		let glc = &self.glc;
 		unsafe {
 			glc.delete_texture(self.tex);
@@ -204,29 +207,29 @@ impl Drop for Texture {
 }
 
 impl Texture {
-	pub fn try_from_texture(glc: Arc<Context>, tex: &RTexture) -> Result<Self, Box<dyn Error>> {
+	pub fn try_from_surface(glc: Arc<Context>, tex: &Surface) -> Result<Self, Box<dyn Error>> {
 		unsafe {
 			let texture = glc.create_texture()?;
 			glc.bind_texture(glow::TEXTURE_2D, Some(texture));
 			let tex_iformat: i32 = match tex.texture_type {
-				TextureType::I32RGBA => glow::RGBA32I,
-				TextureType::U8RGBA => glow::RGBA32F,
-				TextureType::U8RGB => glow::RGB32F,
+				SurfaceType::I32RGBA => glow::RGBA32I,
+				SurfaceType::U8RGBA => glow::RGBA32F,
+				SurfaceType::U8RGB => glow::RGB32F,
 			}.try_into().unwrap();
 			let tex_format = match tex.texture_type {
-				TextureType::I32RGBA => glow::RGBA_INTEGER,
-				TextureType::U8RGBA => glow::RGBA,
-				TextureType::U8RGB => glow::RGB,
+				SurfaceType::I32RGBA => glow::RGBA_INTEGER,
+				SurfaceType::U8RGBA => glow::RGBA,
+				SurfaceType::U8RGB => glow::RGB,
 			};
 			let data_type = match tex.texture_type {
-				TextureType::I32RGBA => glow::INT,
-				TextureType::U8RGBA => glow::UNSIGNED_BYTE,
-				TextureType::U8RGB => glow::UNSIGNED_BYTE,
+				SurfaceType::I32RGBA => glow::INT,
+				SurfaceType::U8RGBA => glow::UNSIGNED_BYTE,
+				SurfaceType::U8RGB => glow::UNSIGNED_BYTE,
 			};
 			let (min_filter, mag_filter) = match tex.texture_type {
-				TextureType::I32RGBA => (glow::NEAREST as i32, glow::NEAREST as i32),
-				TextureType::U8RGBA => (glow::LINEAR as i32, glow::LINEAR as i32),
-				TextureType::U8RGB => (glow::LINEAR as i32, glow::LINEAR as i32),
+				SurfaceType::I32RGBA => (glow::NEAREST as i32, glow::NEAREST as i32),
+				SurfaceType::U8RGBA => (glow::LINEAR as i32, glow::LINEAR as i32),
+				SurfaceType::U8RGB => (glow::LINEAR as i32, glow::LINEAR as i32),
 			};
 			glc.tex_image_2d(glow::TEXTURE_2D, 0, tex_iformat,
 				tex.width as i32, tex.height as i32, 0, tex_format,
@@ -360,7 +363,8 @@ impl ShaderProgram {
 
 impl Drop for ShaderProgram {
 	fn drop(&mut self) {
-		// println!("Drop ShaderProgram");
+		#[cfg(feature = "log_drop_gl_resources")]
+		println!("Drop ShaderProgram");
 		let glc = &self.glc;
 		unsafe {
 			for shader in self.shaders.iter().copied() {
@@ -429,7 +433,7 @@ pub struct BasicModel<I> where I : IndexInteger + Pod {
 
 pub struct BufferModel<I> where I : IndexInteger + Pod {
 	pub base: BasicModel<I>,
-	pub skin: Texture,
+	pub skin: Rc<Texture>,
 	pub animation: Option<Texture>,
 }
 

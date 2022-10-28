@@ -46,12 +46,12 @@ impl TextureCache {
 		cache.insert(String::from(NULL_TEXTURE_NAME), Rc::new(Texture::try_from_surface(glc, null_texture).unwrap()));
 		Self { cache }
 	}
-	fn get(&mut self, glc: Arc<GLContext>, path: &dyn AsRef<Path>) -> Rc<Texture> {
+	fn get(&mut self, glc: Arc<GLContext>, path: &dyn AsRef<Path>) -> (Rc<Texture>, Option<Box<dyn Error>>) {
 		let null_key = Cow::from(NULL_TEXTURE_NAME);
 		let path = path.as_ref();
 		let key = path.to_string_lossy();
 		if let Some(r) = self.cache.get(key.as_ref()) {
-			return Rc::clone(r);
+			return (Rc::clone(r), None);
 		}
 		match Surface::read_png(path) {
 			Ok(s) => {
@@ -62,17 +62,15 @@ impl TextureCache {
 						let myref = Rc::clone(&txref);
 						let path = path.to_string_lossy();
 						self.cache.insert(path.into_owned(), txref);
-						myref
+						(myref, None)
 					},
 					Err(e) => {
-						eprintln!("Could not load texture {}: {:?}", path.display(), e);
-						Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap())
+						(Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap()), Some(format!("Could not load texture {}: {:?}", path.display(), e).into()))
 					},
 				}
 			},
 			Err(e) => {
-				eprintln!("Could not load texture {}: {:?}", path.display(), e);
-				Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap())
+				(Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap()), Some(format!("Could not load texture {}: {:?}", path.display(), e).into()))
 			},
 		}
 	}
@@ -405,12 +403,25 @@ egui_glow.run(wc.window(), |ctx| {
 							index: ib,
 							shader: Rc::clone(&md3_shader),
 						},
-						skin: app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
-							Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
-							String::from_utf8_lossy(&s.name)
-							.trim_matches(|c| c == char::from_u32(0).unwrap())
-							.trim())))
-						).unwrap_or(Cow::from(OsString::new()))),
+						skin: {
+					let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
+						Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
+						String::from_utf8_lossy(&s.name)
+						.trim_matches(|c| c == char::from_u32(0).unwrap())
+						.trim())))
+					).unwrap_or(Cow::from(OsString::new())));
+					if let Some(e) = error {
+						match &mut app.error_message {
+							Some(ee) => {
+								ee.push_str(&e.to_string());
+							},
+							None => {
+								app.error_message = Some(e.to_string());
+							},
+						}
+					}
+					texture
+						},
 						animation: an,
 					}
 				}).collect();

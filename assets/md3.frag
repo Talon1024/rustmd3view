@@ -8,6 +8,7 @@ in vec2 uv;
 out vec4 FragColor;
 
 const uint MODE_TEXTURED = 0u;
+const uint MODE_NORMALS = 1u;
 
 void main() {
 	vec3 up = vec3(0., 1., 0.);
@@ -15,9 +16,13 @@ void main() {
 	// FragColor = vec4(vec3(brightness), 1.);
 	// FragColor = vec4(eyeNormal, 1.);
 	switch (mode) {
+		case MODE_NORMALS:
+			FragColor = vec4(eyeNormal, 1.);
+			break;
 		case MODE_TEXTURED:
 		default:
 			FragColor = texture(tex, uv);
 			FragColor.rgb *= brightness;
+			break;
 	}
 }

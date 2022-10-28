@@ -20,7 +20,7 @@ png = "0.17.6"
 shrinkwraprs = "0.3.0"
 
 [features]
-default = ["extra_logging"]
+default = []
 extra_logging = ["log_successful_load", "log_drop_gl_resources"]
 log_drop_gl_resources = []
 log_successful_load = []

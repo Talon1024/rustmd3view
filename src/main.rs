@@ -433,12 +433,12 @@ egui_glow.run(wc.window(), |ctx| {
 				app.anim_playing = false;
 				app.current_frame = 0.;
 				app.model_data = Some(Box::new(model));
+				app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
 				app.models = app.model_data.as_ref().unwrap().surfaces
 				.iter().map(|surf| {
 					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
 					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
 					let an = Texture::try_from_surface(Arc::clone(&glc), &surf.make_animation_surface()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
-					app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
 					BufferModel {
 						base: BasicModel {
 							vertex: vb,

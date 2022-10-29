@@ -82,10 +82,20 @@ impl TextureCache {
 	}
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(u32)]
+enum ViewMode {
+	#[default]
+	Textured,
+	Untextured,
+	Normals,
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 struct AppControls {
 	lmb_dragging: bool,
 	rmb_dragging: bool,
+	view_mode: ViewMode,
 }
 
 struct App {
@@ -307,6 +317,8 @@ unsafe {
 
 		glc.uniform_1_f32(model.base.shader.borrow_mut().uniform_location(Cow::from("frame")).as_ref(), app.current_frame);
 
+		glc.uniform_1_u32(model.base.shader.borrow_mut().uniform_location(Cow::from("mode")).as_ref(), app.controls.view_mode as u32);
+
 		glc.uniform_matrix_4_f32_slice(model.base.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, app.camera.view_projection().as_ref());
 
 		if let Err(e) = render::render(
@@ -359,6 +371,15 @@ egui_glow.run(wc.window(), |ctx| {
 					ui.close_menu();
 					*control_flow = ControlFlow::ExitWithCode(0);
 				}
+			});
+			ui.menu_button("View", |ui| {
+				if ui.radio_value(&mut app.controls.view_mode,
+					ViewMode::Textured, "Textured").clicked() ||
+					ui.radio_value(&mut app.controls.view_mode,
+						ViewMode::Untextured, "Untextured").clicked() ||
+					ui.radio_value(&mut app.controls.view_mode,
+						ViewMode::Normals, "Normals").clicked()
+				{ ui.close_menu(); }
 			});
 		});
 	});
@@ -434,6 +455,7 @@ egui_glow.run(wc.window(), |ctx| {
 					if let Some(e) = error {
 						match &mut app.error_message {
 							Some(ee) => {
+								ee.push('\n');
 								ee.push_str(&e.to_string());
 							},
 							None => {

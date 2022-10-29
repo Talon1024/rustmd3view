@@ -33,17 +33,21 @@ vec3[2] toPosNorm(ivec4 raw) {
 
 void main() {
 	float interp = fract(frame);
+	// Which frames to use?
 	int framea = int(floor(frame));
 	int frameb = int(ceil(frame));
-	ivec2 uva = ivec2(aIndex, framea); // Vertex on X axis, frame on Y axis
+	// Vertex positions and normals are stored in an RGB integer texture, with
+	// the vertex (by index) on the X axis, and the frame on the Y axis.
+	ivec2 uva = ivec2(aIndex, framea);
 	ivec2 uvb = ivec2(aIndex, frameb);
 	ivec4 ia = texelFetch(anim, uva, 0);
-	vec3[2] va = toPosNorm(ia);
 	ivec4 ib = texelFetch(anim, uvb, 0);
+	vec3[2] va = toPosNorm(ia);
 	vec3[2] vb = toPosNorm(ib);
 	position = mix(va[0], vb[0], interp);
 	// Thanks to https://en.wikibooks.org/wiki/GLSL_Programming/Applying_Matrix_Transformations#Transforming_Directions for "pointing me in the right direction" 😉😉
 	eyeNormal = (eye * vec4(mix(va[1], vb[1], interp), 0.)).xyz;
+	eyeNormal.z = -eyeNormal.z;
 	uv = aUv;
 	gl_Position = eye * vec4(position, 1.);
 }

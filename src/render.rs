@@ -7,13 +7,13 @@ use std::{
 	borrow::Cow,
 	error::Error,
 	mem,
+	ops::{Deref, DerefMut},
 	rc::Rc,
 	cell::RefCell,
 	sync::Arc,
 	marker::PhantomData,
 	collections::HashMap,
 };
-use shrinkwraprs::Shrinkwrap;
 use bytemuck::{Pod, Zeroable};
 use crate::eutil::gl_get_error;
 
@@ -383,9 +383,21 @@ impl Drop for ShaderProgram {
 	}
 }
 
-#[derive(Debug, Clone, Copy, Shrinkwrap, Default)]
-#[shrinkwrap(mutable)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct TextureUnit(pub u8);
+
+impl Deref for TextureUnit {
+	type Target = u8;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+impl DerefMut for TextureUnit {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.0
+	}
+}
 
 impl TextureUnit {
 	pub fn gl_id(self) -> u32 {

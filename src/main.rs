@@ -94,6 +94,7 @@ struct AppControls {
 	lmb_dragging: bool,
 	rmb_dragging: bool,
 	view_mode: ViewMode,
+	gzdoom_normals: bool,
 }
 
 struct App {
@@ -311,6 +312,8 @@ unsafe {
 
 		glc.uniform_1_u32(model.base.shader.borrow_mut().uniform_location(Cow::from("mode")).as_ref(), app.controls.view_mode as u32);
 
+		glc.uniform_1_u32(model.base.shader.borrow_mut().uniform_location(Cow::from("gzdoom")).as_ref(), if app.controls.gzdoom_normals {1} else {0});
+
 		glc.uniform_matrix_4_f32_slice(model.base.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, app.camera.view_projection().as_ref());
 
 		if let Err(e) = render::render(
@@ -372,6 +375,7 @@ egui_glow.run(wc.window(), |ctx| {
 					ui.radio_value(&mut app.controls.view_mode,
 						ViewMode::Normals, "Normals").clicked()
 				{ ui.close_menu(); }
+				if ui.checkbox(&mut app.controls.gzdoom_normals, "GZDoom normals").clicked() { ui.close_menu(); }
 			});
 		});
 	});

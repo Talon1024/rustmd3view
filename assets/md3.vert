@@ -1,5 +1,6 @@
 #version 330 core
 
+uniform bool gzdoom;
 uniform isampler2D anim;
 uniform mat4 eye;
 uniform float frame; // interpolated
@@ -15,18 +16,28 @@ const float BYTE_TAU = 40.58451048843331062106; //255./(2.*pi)
 vec3[2] toPosNorm(ivec4 raw) {
 	vec3 xyz = vec3(raw.xyz) * MD3_XYZ_SCALE;
 	vec3 normal = vec3(0.);
-	switch (raw.w) {
-		// special cases
-		case 0: normal = vec3(0., 0., 1.);
-		case 32768: normal = vec3(0., 0., -1.);
-		default:
-			float latitude = float((raw.w >> 8) & 0xFF) / BYTE_TAU;
-			float longtude = float(raw.w & 0xFF) / BYTE_TAU;
-			float sl = sin(longtude);
-			normal = vec3(
-				cos(latitude) * sl,
-				sin(latitude) * sl,
-				cos(longtude));
+	if (!gzdoom) {
+		switch (raw.w) {
+			// special cases
+			case 0: normal = vec3(0., 0., 1.); break;
+			case 32768: normal = vec3(0., 0., -1.); break;
+			default:
+				float latitude = float((raw.w >> 8) & 0xFF) / BYTE_TAU;
+				float longtude = float(raw.w & 0xFF) / BYTE_TAU;
+				float sl = sin(longtude);
+				normal = vec3(
+					cos(latitude) * sl,
+					sin(latitude) * sl,
+					cos(longtude));
+		}
+	} else {
+		float latitude = float((raw.w >> 8) & 0xFF) / BYTE_TAU;
+		float longtude = float(raw.w & 0xFF) / BYTE_TAU;
+		float sl = sin(longtude);
+		normal = vec3(
+			cos(latitude) * sl,
+			sin(latitude) * sl,
+			cos(longtude));
 	}
 	return vec3[2](xyz, normal);
 }

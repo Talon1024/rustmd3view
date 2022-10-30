@@ -55,7 +55,7 @@ impl MD3Surface {
 	pub fn make_animation_surface(&self) -> Surface {
 		let width = self.num_verts;
 		let height = self.num_frames;
-		let tex_type = SurfaceType::I32RGBA;
+		let tex_type = SurfaceType::Animation;
 		let channels = tex_type.channels() as usize;
 		let mut data = vec![0i32; width * height * channels];
 		data.chunks_exact_mut(channels).enumerate().for_each(|(i, px)| {

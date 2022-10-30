@@ -11,7 +11,6 @@ use glow::{Context as GLContext, HasContext};
 use glutin::event_loop::{EventLoopBuilder, ControlFlow};
 use glutin::event::Event;
 use res::{AppResources, Surface};
-use shrinkwraprs::Shrinkwrap;
 use std::{
 	borrow::Cow,
 	cell::RefCell,
@@ -33,7 +32,6 @@ use render::{BasicModel, BufferModel, VertexBuffer, IndexBuffer, Texture, Shader
 
 use egui_file::FileDialog;
 
-#[derive(Shrinkwrap)]
 struct TextureCache {
 	cache: HashMap<String, Rc<Texture>, RandomState>,
 }
@@ -209,12 +207,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 		sdr.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)?;
 		sdr.add_shader(ShaderStage::Fragment, &app_res.md3_pixel_shader)?;
 		sdr.prepare()?;
-		/* ["anim", "eye", "frame", "tex"].into_iter().for_each(|uname|{
-			let uloc = unsafe { glc.get_uniform_location(sdr.prog(), uname) };
-			if let Some(uloc) = uloc {
-				app.uniform_locations.insert(uname.to_string(), uloc);
-			}
-		}); */
 		sdr
 	}));
 	app.camera.aspect = {

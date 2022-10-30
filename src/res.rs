@@ -11,7 +11,7 @@ use glam::Vec3;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum SurfaceType {
-	I32RGBA,
+	Animation,
 	#[default]
 	U8RGBA,
 	U8RGB,
@@ -22,7 +22,7 @@ pub enum SurfaceType {
 impl SurfaceType {
 	pub fn channels(&self) -> u8 {
 		match self {
-			SurfaceType::I32RGBA => 4,
+			SurfaceType::Animation => 4,
 			SurfaceType::U8RGBA => 4,
 			SurfaceType::U8RGB => 3,
 			SurfaceType::U8R => 1,

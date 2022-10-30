@@ -103,7 +103,7 @@ impl VertexBuffer {
 			glc.bind_vertex_array(Some(vao));
 			let vbo = glc.create_buffer().unwrap();
 			glc.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-			glc.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytemuck::cast_slice::<T, u8>(&buf), glow::STATIC_DRAW);
+			glc.buffer_data_u8_slice(glow::ARRAY_BUFFER, bytemuck::cast_slice(&buf), glow::STATIC_DRAW);
 			T::setup_vertex_attrs(glc);
 			glc.bind_buffer(glow::ARRAY_BUFFER, None);
 			glc.bind_vertex_array(None);
@@ -159,7 +159,7 @@ impl<I> IndexBuffer<I> where I : IndexInteger + Pod {
 		let ebo = unsafe {
 			let ebo = glc.create_buffer().unwrap();
 			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-			glc.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytemuck::cast_slice::<I, u8>(&buf), glow::STATIC_DRAW);
+			glc.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, bytemuck::cast_slice(&buf), glow::STATIC_DRAW);
 			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
 			ebo
 		};

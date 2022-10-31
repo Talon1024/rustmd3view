@@ -12,5 +12,6 @@ void main() {
 	vec4 position = vec4(aPosition, 1.);
 	normal = (eye * vec4(aNormal, 0.)).xyz;
 	normal.z = -normal.z;
+	normal = normalize(normal);
 	gl_Position = eye * position;
 }

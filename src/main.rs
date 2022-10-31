@@ -6,7 +6,9 @@ mod render;
 mod eutil;
 
 use ahash::RandomState;
+use egui::{Color32, LayerId, TextStyle, Order, Pos2, Id};
 use eye::{Camera, OrbitCamera};
+use glam::{Vec3, Mat4};
 use glow::{Context as GLContext, HasContext};
 use glutin::event_loop::{EventLoopBuilder, ControlFlow};
 use glutin::event::Event;
@@ -20,8 +22,7 @@ use std::{
 	ffi::OsString,
 	fs::File,
 	sync::Arc,
-	ops::RangeInclusive,
-	ops::RangeBounds,
+	ops::{RangeInclusive, RangeBounds, /* Add, Mul */},
 	path::Path,
 	rc::Rc,
 	time::Instant,
@@ -214,6 +215,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		let logical_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
 		logical_size.width / logical_size.height
 	};
+	let mut window_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
 	let _app_start = Instant::now();
 	unsafe { glc.clear_color(0., 0., 0., 1.); }
 	el.run(move |event, _window, control_flow| {
@@ -232,8 +234,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 						*control_flow = ControlFlow::ExitWithCode(0);
 					},
 					Resized(new_size) => {
-						let logical_size = new_size.to_logical::<f32>(wc.window().scale_factor());
-						app.camera.aspect = logical_size.width / logical_size.height;
+						window_size = new_size.to_logical::<f32>(wc.window().scale_factor());
+						app.camera.aspect = window_size.width / window_size.height;
 					},
 					MouseInput {state, button, .. } => {
 						match button {
@@ -330,13 +332,11 @@ unsafe {
 	glc.depth_func(glow::ALWAYS);
 	app.axes.shader.borrow().activate().unwrap();
 	let mvp = {
-		use glam::{Vec3, Mat4};
 		let eye = Vec3::new(
 			app.camera.longtude.cos() * app.camera.latitude.cos(),
 			app.camera.longtude.sin() * app.camera.latitude.cos(),
 			app.camera.latitude.sin(),
 		) * -60.;
-		let window_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
 		// 160 pixels left from top right corner, 80 pixels down from top right corner
 		let trans = Mat4::from_translation(Vec3::new(1.0 - (320./window_size.width), 1.0 - (160./window_size.height), 0.));
 		let scale = Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
@@ -482,9 +482,31 @@ egui_glow.run(wc.window(), |ctx| {
 			});
 		}
 	});
-	/* egui::Window::new("camera position").show(ctx, |ui| {
-		ui.label(format!("longitude {}\nlatitude {}", app.camera.position.x, app.camera.position.y));
-	}); */
+	// DRAW TAG NAMES AT TAG POSITIONS
+	// ==================================================================
+	if !app.open_file_dialog.visible(){
+	let painter = ctx.layer_painter(
+		LayerId { order: Order::Foreground, id: Id::new("tag_name_overlays") });
+	if let Some(model) = app.model_data.as_ref() {
+		let current_frame = app.current_frame.trunc() as usize;
+		let num_tags = model.num_tags;
+		(0..num_tags).for_each(|tag_index| {
+			let tag_index = tag_index + num_tags * current_frame;
+			let tag = &model.tags[tag_index];
+			let tag_name = String::from_utf8_lossy(&tag.name).to_string();
+			let font = egui::style::default_text_styles()[&TextStyle::Small].clone();
+			let galley = painter.layout_no_wrap(tag_name, font, Color32::WHITE);
+			let pos = {
+				let pos = app.camera.view_projection().project_point3(tag.origin);
+				let Vec3 {x, y, ..} = pos;
+				let x = x.mul_add(0.5, 0.5) * window_size.width;
+				// In OpenGL NDC, +y is up and -y is down
+				let y = (-y).mul_add(0.5, 0.5) * window_size.height;
+				Pos2 {x, y}
+			};
+			painter.galley(pos, galley);
+		});
+	}}
 });
 egui_glow.paint(wc.window());
 // SWAP BUFFERS
@@ -497,3 +519,9 @@ if let Err(e) = wc.swap_buffers() {
 		}
 	});
 }
+/* 
+#[inline]
+fn lerp<T>(a: T, b: T, f: f32) -> T where T : Add<T> + Mul<f32>, <T as Mul<f32>>::Output: Add<T> {
+	a * (1. - f) + b * f
+}
+ */

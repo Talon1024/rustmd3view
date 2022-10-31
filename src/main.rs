@@ -8,7 +8,7 @@ mod eutil;
 use ahash::RandomState;
 use egui::{Color32, LayerId, TextStyle, Order, Pos2, Id};
 use eye::{Camera, OrbitCamera};
-use glam::{Vec3, Mat4};
+use glam::{Affine3A, Vec3, Mat4};
 use glow::{Context as GLContext, HasContext};
 use glutin::event_loop::{EventLoopBuilder, ControlFlow};
 use glutin::event::Event;
@@ -107,6 +107,7 @@ struct App {
 	error_message: Option<String>,
 	models: Vec<BufferModel<u32>>,
 	axes: BasicModel<u8>,
+	tag_axes: BasicModel<u8>,
 	camera: OrbitCamera,
 	controls: AppControls,
 	texture_cache: TextureCache,
@@ -114,6 +115,13 @@ struct App {
 
 impl App {
 	fn new(res: &AppResources, glc: &Arc<GLContext>) -> Self {
+		let axes_shader = {
+			let mut sp = ShaderProgram::new(Arc::clone(glc)).unwrap();
+			sp.add_shader(ShaderStage::Vertex, &res.res_vertex_shader).unwrap();
+			sp.add_shader(ShaderStage::Fragment, &res.res_pixel_shader).unwrap();
+			sp.prepare().unwrap();
+			Rc::new(RefCell::new(sp))
+		};
 		App {
 			open_file_dialog: FileDialog::open_file(None)
 				.show_rename(false)
@@ -128,13 +136,12 @@ impl App {
 			axes: BasicModel {
 				vertex: VertexBuffer::new(Arc::clone(glc), Box::new(res::AXES_V)),
 				index: IndexBuffer::new(Arc::clone(glc), Vec::from(res::AXES_I)),
-				shader: {
-					let mut sp = ShaderProgram::new(Arc::clone(glc)).unwrap();
-					sp.add_shader(ShaderStage::Vertex, &res.res_vertex_shader).unwrap();
-					sp.add_shader(ShaderStage::Fragment, &res.res_pixel_shader).unwrap();
-					sp.prepare().unwrap();
-					Rc::new(RefCell::new(sp))
-				},
+				shader: Rc::clone(&axes_shader),
+			},
+			tag_axes: BasicModel {
+				vertex: VertexBuffer::new(Arc::clone(glc), Box::new(res::TAGAXES_V)),
+				index: IndexBuffer::new(Arc::clone(glc), Vec::from(res::TAGAXES_I)),
+				shader: Rc::clone(&axes_shader),
 			},
 			controls: AppControls::default(),
 			camera: OrbitCamera::default(),
@@ -326,6 +333,35 @@ unsafe {
 		}
 	});
 }
+// DRAW TAG AXES
+// ==================================================================
+unsafe {
+	app.tag_axes.shader.borrow().activate().unwrap();
+	if let Some(model) = app.model_data.as_ref() {
+		let current_frame = app.current_frame.floor() as usize;
+		let next_frame = app.current_frame.ceil() as usize;
+		let lerp_factor = app.current_frame.fract();
+		let num_tags = model.num_tags;
+		(0..num_tags).for_each(|tag_index| {
+			let tag_a = tag_index + num_tags * current_frame;
+			let tag_b = tag_index + num_tags * next_frame;
+			let tag_a = &model.tags[tag_a];
+			let tag_b = &model.tags[tag_b];
+			let tag_axes = (tag_a.axes * (1. - lerp_factor)) + (tag_b.axes * lerp_factor);
+			let tag_origin = (tag_a.origin * (1. - lerp_factor)) + (tag_b.origin * lerp_factor);
+			let mvp = app.camera.view_projection() * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
+
+			glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
+			glc.uniform_1_u32(app.axes.shader.borrow_mut().uniform_location(Cow::from("shaded")).as_ref(), 1);
+			if let Err(e) = render::render(
+				&glc,
+				&app.tag_axes.vertex,
+				&app.tag_axes.index) {
+				eprintln!("{:?}", e);
+			}
+		});
+	}
+}
 // DRAW AXES
 // ==================================================================
 unsafe {
@@ -345,6 +381,7 @@ unsafe {
 		trans * proj * view * scale
 	};
 	glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
+	glc.uniform_1_u32(app.axes.shader.borrow_mut().uniform_location(Cow::from("shaded")).as_ref(), 0);
 	if let Err(e) = render::render(
 		&glc,
 		&app.axes.vertex,
@@ -488,16 +525,21 @@ egui_glow.run(wc.window(), |ctx| {
 	let painter = ctx.layer_painter(
 		LayerId { order: Order::Foreground, id: Id::new("tag_name_overlays") });
 	if let Some(model) = app.model_data.as_ref() {
-		let current_frame = app.current_frame.trunc() as usize;
+		let current_frame = app.current_frame.floor() as usize;
+		let next_frame = app.current_frame.ceil() as usize;
+		let lerp_factor = app.current_frame.fract();
 		let num_tags = model.num_tags;
 		(0..num_tags).for_each(|tag_index| {
-			let tag_index = tag_index + num_tags * current_frame;
-			let tag = &model.tags[tag_index];
-			let tag_name = String::from_utf8_lossy(&tag.name).to_string();
+			let tag_a = tag_index + num_tags * current_frame;
+			let tag_b = tag_index + num_tags * next_frame;
+			let tag_a = &model.tags[tag_a];
+			let tag_b = &model.tags[tag_b];
+			let tag_origin = (tag_a.origin * (1. - lerp_factor)) + (tag_b.origin * lerp_factor);
+			let tag_name = String::from_utf8_lossy(&tag_a.name).to_string();
 			let font = egui::style::default_text_styles()[&TextStyle::Small].clone();
 			let galley = painter.layout_no_wrap(tag_name, font, Color32::WHITE);
 			let pos = {
-				let pos = app.camera.view_projection().project_point3(tag.origin);
+				let pos = app.camera.view_projection().project_point3(tag_origin);
 				let Vec3 {x, y, ..} = pos;
 				let x = x.mul_add(0.5, 0.5) * window_size.width;
 				// In OpenGL NDC, +y is up and -y is down
@@ -521,7 +563,8 @@ if let Err(e) = wc.swap_buffers() {
 }
 /* 
 #[inline]
-fn lerp<T>(a: T, b: T, f: f32) -> T where T : Add<T> + Mul<f32>, <T as Mul<f32>>::Output: Add<T> {
+fn lerp<T>(a: T, b: T, f: f32) -> T
+{
 	a * (1. - f) + b * f
 }
  */

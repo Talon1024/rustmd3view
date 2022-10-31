@@ -26,20 +26,27 @@ pub struct VertexMD3 {
 
 pub trait InterleavedVertexAttribute {
 	unsafe fn setup_vertex_attrs(glc: &Context);
+	fn stride() -> i32 where Self : Sized {
+		mem::size_of::<Self>() as i32
+	}
 }
 
 impl InterleavedVertexAttribute for VertexMD3 {
 	unsafe fn setup_vertex_attrs(glc: &Context) {
 		let mut attrib_index = 0;
+		let mut offset = 0;
+		let stride = Self::stride();
 
 		glc.vertex_attrib_pointer_i32(attrib_index, 1, glow::UNSIGNED_INT,
-			mem::size_of::<Self>() as i32, 0);
+			stride, offset);
 		glc.enable_vertex_attrib_array(attrib_index);
+		offset += mem::size_of::<u32>() as i32;
 		attrib_index += 1;
 
 		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false,
-			mem::size_of::<Self>() as i32, mem::size_of::<u32>() as i32);
+			stride, offset);
 		glc.enable_vertex_attrib_array(attrib_index);
+		// offset += mem::size_of::<Vec2>() as i32;
 		// attrib_index += 1;
 	}
 }
@@ -49,18 +56,28 @@ impl InterleavedVertexAttribute for VertexMD3 {
 pub struct VertexRes {
 	pub position: Vec3,
 	pub colour: Vec3,
+	pub normal: Vec3,
 }
 
 impl InterleavedVertexAttribute for VertexRes {
 	unsafe fn setup_vertex_attrs(glc: &Context) {
 		let mut attrib_index = 0;
+		let mut offset = 0;
+		let stride = Self::stride();
 
-		glc.vertex_attrib_pointer_f32(attrib_index, 3, glow::FLOAT, false, mem::size_of::<Self>() as i32, 0);
+		glc.vertex_attrib_pointer_f32(attrib_index, 3, glow::FLOAT, false, stride, offset);
 		glc.enable_vertex_attrib_array(attrib_index);
+		offset += mem::size_of::<Vec3>() as i32;
 		attrib_index += 1;
 
-		glc.vertex_attrib_pointer_f32(attrib_index, 3, glow::FLOAT, false, mem::size_of::<Self>() as i32, mem::size_of::<Vec3>() as i32);
+		glc.vertex_attrib_pointer_f32(attrib_index, 3, glow::FLOAT, false, stride, offset);
 		glc.enable_vertex_attrib_array(attrib_index);
+		offset += mem::size_of::<Vec3>() as i32;
+		attrib_index += 1;
+
+		glc.vertex_attrib_pointer_f32(attrib_index, 3, glow::FLOAT, false, stride, offset);
+		glc.enable_vertex_attrib_array(attrib_index);
+		// offset += mem::size_of::<Vec3>() as i32;
 		// attrib_index += 1;
 	}
 }
@@ -75,13 +92,17 @@ pub struct VertexSprite {
 impl InterleavedVertexAttribute for VertexSprite {
 	unsafe fn setup_vertex_attrs(glc: &Context) {
 		let mut attrib_index = 0;
+		let mut offset = 0;
+		let stride = Self::stride();
 
-		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false, mem::size_of::<Self>() as i32, 0);
+		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false, stride, offset);
 		glc.enable_vertex_attrib_array(attrib_index);
+		offset += mem::size_of::<Vec2>() as i32;
 		attrib_index += 1;
 
-		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false, mem::size_of::<Self>() as i32, mem::size_of::<Vec2>() as i32);
+		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false, stride, offset);
 		glc.enable_vertex_attrib_array(attrib_index);
+		// offset += mem::size_of::<Vec2>() as i32;
 		// attrib_index += 1;
 	}
 }
@@ -457,6 +478,7 @@ pub struct BufferModel<I> where I : IndexInteger + Pod {
 	pub animation: Option<Texture>,
 }
 
+#[inline]
 pub fn render<I>(
 	glc: &Context,
 	vertices: &VertexBuffer,

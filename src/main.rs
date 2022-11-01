@@ -22,7 +22,7 @@ use std::{
 	ffi::OsString,
 	fs::File,
 	sync::Arc,
-	ops::{RangeInclusive, RangeBounds, /* Add, Mul */},
+	ops::{RangeInclusive, RangeBounds, Add, Mul},
 	path::Path,
 	rc::Rc,
 	time::Instant,
@@ -347,8 +347,8 @@ unsafe {
 			let tag_b = tag_index + num_tags * next_frame;
 			let tag_a = &model.tags[tag_a];
 			let tag_b = &model.tags[tag_b];
-			let tag_axes = (tag_a.axes * (1. - lerp_factor)) + (tag_b.axes * lerp_factor);
-			let tag_origin = (tag_a.origin * (1. - lerp_factor)) + (tag_b.origin * lerp_factor);
+			let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
+			let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
 			let mvp = app.camera.view_projection() * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
 
 			glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
@@ -534,7 +534,7 @@ egui_glow.run(wc.window(), |ctx| {
 			let tag_b = tag_index + num_tags * next_frame;
 			let tag_a = &model.tags[tag_a];
 			let tag_b = &model.tags[tag_b];
-			let tag_origin = (tag_a.origin * (1. - lerp_factor)) + (tag_b.origin * lerp_factor);
+			let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
 			let tag_name = String::from_utf8_lossy(&tag_a.name).to_string();
 			let font = egui::style::default_text_styles()[&TextStyle::Small].clone();
 			let galley = painter.layout_no_wrap(tag_name, font, Color32::WHITE);
@@ -561,10 +561,11 @@ if let Err(e) = wc.swap_buffers() {
 		}
 	});
 }
-/* 
+
 #[inline]
 fn lerp<T>(a: T, b: T, f: f32) -> T
+where
+	T: Mul<f32, Output = T> + Add<T, Output = T>,
 {
 	a * (1. - f) + b * f
 }
- */

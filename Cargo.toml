@@ -16,7 +16,7 @@ anyhow = {version = "1.0.66", features=["backtrace"]}
 egui = "0.19.0"
 egui_file = "0.2.0"
 egui_glow = {version = "0.19.0", features=["winit"]}
-png = "0.17.6"
+image = "0.24.4"
 
 [features]
 default = []

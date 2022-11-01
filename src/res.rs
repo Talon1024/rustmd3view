@@ -1,13 +1,16 @@
+use anyhow::Error;
 use std::{
 	borrow::Cow,
-	error::Error,
 	env,
 	path::Path,
-	fs::{self, File}
+	fs::{self, File},
+	io::BufReader,
+	ops::Deref,
 };
-use png::{Decoder, Info as PNGInfo};
 use crate::render::VertexRes;
 use glam::Vec3;
+use image::{io::Reader, ImageBuffer, Pixel, DynamicImage::*};
+use bytemuck::Pod;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum SurfaceType {
@@ -15,8 +18,10 @@ pub enum SurfaceType {
 	#[default]
 	U8RGBA,
 	U8RGB,
-	U8R,
-	U8RG,
+	U16RGB,
+	U16RGBA,
+	F32RGB,
+	F32RGBA,
 }
 
 impl SurfaceType {
@@ -25,8 +30,10 @@ impl SurfaceType {
 			SurfaceType::Animation => 4,
 			SurfaceType::U8RGBA => 4,
 			SurfaceType::U8RGB => 3,
-			SurfaceType::U8R => 1,
-			SurfaceType::U8RG => 2,
+			SurfaceType::U16RGB => 3,
+			SurfaceType::U16RGBA => 4,
+			SurfaceType::F32RGB => 3,
+			SurfaceType::F32RGBA => 4,
 		}
 	}
 }
@@ -40,32 +47,38 @@ pub struct Surface {
 }
 
 impl Surface {
-	pub fn read_png(path: impl AsRef<Path>) -> Result<Surface, Box<dyn Error>> {
-		use png::BitDepth::*;
-		use png::ColorType::*;
-		use png::Transformations;
+	pub fn read_image(path: impl AsRef<Path>) -> Result<Surface, Error> {
 		use SurfaceType::*;
-		let mut png_decoder = Decoder::new(File::open(path)?);
-		png_decoder.set_transformations(Transformations::normalize_to_color8());
-		let mut png_reader = png_decoder.read_info()?;
-		let PNGInfo {width, height, ..} = *png_reader.info();
-		let (color_type, bit_depth) = png_reader.output_color_type();
-		Ok(Surface {
-			width,
-			height,
-			texture_type: match (bit_depth, color_type) {
-				(Eight, Rgb) => Ok(U8RGB),
-				(Eight, Rgba) => Ok(U8RGBA),
-				(Eight, Grayscale) => Ok(U8R),
-				(Eight, GrayscaleAlpha) => Ok(U8RG),
-				_ => Err("Unsupported texture type")
-			}?,
-			data: {
-				let mut pixels = vec![0; png_reader.output_buffer_size()];
-				png_reader.next_frame(&mut pixels)?;
-				pixels.into_boxed_slice()
-			},
-		})
+		let file_reader = BufReader::new(File::open(path)?);
+		let image = Reader::new(file_reader)
+			.with_guessed_format()?
+			.decode()?;
+		fn to_surface<P: Pixel, T>(buf: ImageBuffer<P, T>, fmt: SurfaceType) -> Surface
+		where
+			P: Pixel,
+			T: Deref<Target = [<P as image::Pixel>::Subpixel]>,
+			<P as image::Pixel>::Subpixel: Pod
+			{
+			let (width, height) = buf.dimensions();
+			Surface {
+				width, height,
+				texture_type: fmt,
+				data: bytemuck::cast_slice(&buf.into_raw()).into()
+			}
+		}
+		match image {
+			ImageLuma8(_i) => Err(Error::msg("Unsupported format: ImageLuma8")),
+			ImageLumaA8(_i) => Err(Error::msg("Unsupported format: ImageLumaA8")),
+			ImageRgb8(i) => Ok(to_surface(i, U8RGB)),
+			ImageRgba8(i) => Ok(to_surface(i, U8RGBA)),
+			ImageLuma16(_i) => Err(Error::msg("Unsupported format: ImageLuma16")),
+			ImageLumaA16(_i) => Err(Error::msg("Unsupported format: ImageLumaA16")),
+			ImageRgb16(i) => Ok(to_surface(i, U16RGB)),
+			ImageRgba16(i) => Ok(to_surface(i, U16RGBA)),
+			ImageRgb32F(i) => Ok(to_surface(i, F32RGB)),
+			ImageRgba32F(i) => Ok(to_surface(i, F32RGBA)),
+			_ => todo!(),
+		}
 	}
 }
 
@@ -78,7 +91,7 @@ pub struct AppResources {
 }
 
 impl AppResources {
-	pub fn try_load(path: Option<&dyn AsRef<Path>>) -> Result<Box<AppResources>, Box<dyn Error>> {
+	pub fn try_load(path: Option<&dyn AsRef<Path>>) -> Result<Box<AppResources>, Error> {
 		let path = match path {
 			Some(ref p) => Cow::from(p.as_ref()),
 			None => {
@@ -87,7 +100,7 @@ impl AppResources {
 				Cow::from(pwd)
 			},
 		};
-		let null_texture = Surface::read_png(path.join("null.png"))?;
+		let null_texture = Surface::read_image(path.join("null.png"))?;
 		let md3_vertex_shader = fs::read_to_string(path.join("md3.vert"))?;
 		let md3_pixel_shader = fs::read_to_string(path.join("md3.frag"))?;
 		let res_vertex_shader = fs::read_to_string(path.join("res.vert"))?;

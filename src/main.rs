@@ -52,7 +52,7 @@ impl TextureCache {
 		if let Some(r) = self.cache.get(key.as_ref()) {
 			return (Rc::clone(r), None);
 		}
-		match Surface::read_png(path) {
+		match Surface::read_image(path) {
 			Ok(s) => {
 				let texture = Texture::try_from_surface(glc, &s);
 				match texture {

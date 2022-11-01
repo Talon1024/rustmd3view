@@ -232,33 +232,37 @@ impl Texture {
 		unsafe {
 			let texture = glc.create_texture()?;
 			glc.bind_texture(glow::TEXTURE_2D, Some(texture));
+			// NOTE: 16-bit images are untested!
 			let tex_iformat: i32 = match tex.texture_type {
 				SurfaceType::Animation => glow::RGBA32I,
 				SurfaceType::U8RGBA => glow::RGBA32F,
 				SurfaceType::U8RGB => glow::RGB32F,
-				SurfaceType::U8R => glow::R32F,
-				SurfaceType::U8RG => glow::RG32F,
+				SurfaceType::U16RGB => glow::RGB32F,
+				SurfaceType::U16RGBA => glow::RGBA32F,
+				SurfaceType::F32RGB => glow::RGB32F,
+				SurfaceType::F32RGBA => glow::RGBA32F,
 			}.try_into().unwrap();
 			let tex_format = match tex.texture_type {
 				SurfaceType::Animation => glow::RGBA_INTEGER,
 				SurfaceType::U8RGBA => glow::RGBA,
 				SurfaceType::U8RGB => glow::RGB,
-				SurfaceType::U8R => glow::RED,
-				SurfaceType::U8RG => glow::RG,
+				SurfaceType::U16RGB => glow::RGB16UI,
+				SurfaceType::U16RGBA => glow::RGBA16UI,
+				SurfaceType::F32RGB => glow::RGB32F,
+				SurfaceType::F32RGBA => glow::RGBA32F,
 			};
 			let data_type = match tex.texture_type {
 				SurfaceType::Animation => glow::INT,
 				SurfaceType::U8RGBA => glow::UNSIGNED_BYTE,
 				SurfaceType::U8RGB => glow::UNSIGNED_BYTE,
-				SurfaceType::U8R => glow::UNSIGNED_BYTE,
-				SurfaceType::U8RG => glow::UNSIGNED_BYTE,
+				SurfaceType::U16RGB => glow::UNSIGNED_SHORT,
+				SurfaceType::U16RGBA => glow::UNSIGNED_SHORT,
+				SurfaceType::F32RGB => glow::FLOAT,
+				SurfaceType::F32RGBA => glow::FLOAT,
 			};
 			let (min_filter, mag_filter) = match tex.texture_type {
 				SurfaceType::Animation => (glow::NEAREST as i32, glow::NEAREST as i32),
-				SurfaceType::U8RGBA => (glow::LINEAR as i32, glow::LINEAR as i32),
-				SurfaceType::U8RGB => (glow::LINEAR as i32, glow::LINEAR as i32),
-				SurfaceType::U8R => (glow::LINEAR as i32, glow::LINEAR as i32),
-				SurfaceType::U8RG => (glow::LINEAR as i32, glow::LINEAR as i32),
+				_ => (glow::LINEAR as i32, glow::LINEAR as i32),
 			};
 			glc.tex_image_2d(glow::TEXTURE_2D, 0, tex_iformat,
 				tex.width as i32, tex.height as i32, 0, tex_format,

@@ -14,6 +14,16 @@ pub struct OrbitCamera {
 	pub aspect: f32,
 }
 
+impl OrbitCamera {
+	pub fn position(&self) -> Vec3 {
+		Vec3::new(
+			self.longtude.cos() * self.latitude.cos(),
+			self.longtude.sin() * self.latitude.cos(),
+			self.latitude.sin(),
+		) * -self.distance
+	}
+}
+
 impl Default for OrbitCamera {
 	fn default() -> Self {
 		Self {
@@ -28,11 +38,7 @@ impl Default for OrbitCamera {
 
 impl Camera for OrbitCamera {
 	fn view_projection(&self) -> Mat4 {
-		let eye = Vec3::new(
-			self.longtude.cos() * self.latitude.cos(),
-			self.longtude.sin() * self.latitude.cos(),
-			self.latitude.sin(),
-		) * -self.distance;
+		let eye = self.position();
 		let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
 		let proj = Mat4::perspective_lh(self.fov, self.aspect, 0.25, 4096.);
 		proj * view

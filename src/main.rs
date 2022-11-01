@@ -349,7 +349,7 @@ unsafe {
 			let tag_b = &model.tags[tag_b];
 			let tag_axes = (tag_a.axes * (1. - lerp_factor)) + (tag_b.axes * lerp_factor);
 			let tag_origin = (tag_a.origin * (1. - lerp_factor)) + (tag_b.origin * lerp_factor);
-			let mvp = app.camera.view_projection() * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::new(0.0078125, 0.0078125, 0.0078125) * app.camera.distance);
+			let mvp = app.camera.view_projection() * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
 
 			glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
 			glc.uniform_1_u32(app.axes.shader.borrow_mut().uniform_location(Cow::from("shaded")).as_ref(), 1);

@@ -335,6 +335,9 @@ fn read_triangle(data: &mut (impl Read + Seek)) -> MD3Result<MD3Triangle> {
 		data.read_exact(&mut int_buf).or(Err(EOF))?;
 		triangle[i] = u32::from_le_bytes(int_buf);
 	}
+	let tmp = triangle[0];
+	triangle[0] = triangle[2];
+	triangle[2] = tmp;
 	Ok(MD3Triangle(triangle))
 }
 

@@ -103,6 +103,8 @@ struct App {
 	model_data: Option<Box<MD3Model>>,
 	current_frame: f32,
 	anim_playing: bool,
+	anim_start_time: Instant,
+	anim_start_frame: f32,
 	frame_range: Option<RangeInclusive<f32>>,
 	error_message: Option<String>,
 	models: Vec<BufferModel<u32>>,
@@ -130,6 +132,8 @@ impl App {
 			model_data: None,
 			current_frame: 0.,
 			anim_playing: false,
+			anim_start_time: Instant::now(),
+			anim_start_frame: 0.,
 			frame_range: None,
 			error_message: None,
 			models: vec![],
@@ -223,7 +227,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		logical_size.width / logical_size.height
 	};
 	let mut window_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
-	let _app_start = Instant::now();
+	let md3_model_matrix = Mat4::from_scale(Vec3::new(1., -1., 1.));
 	unsafe { glc.clear_color(0., 0., 0., 1.); }
 	el.run(move |event, _window, control_flow| {
 		match event {
@@ -303,6 +307,8 @@ unsafe {
 // ==================================================================
 unsafe {
 	glc.depth_func(glow::LESS);
+	glc.enable(glow::CULL_FACE);
+	glc.cull_face(glow::BACK);
 	app.models.iter().for_each(|model| {
 		model.base.shader.borrow().activate().unwrap();
 		let mut texture = TextureUnit(1);
@@ -323,7 +329,8 @@ unsafe {
 
 		glc.uniform_1_u32(model.base.shader.borrow_mut().uniform_location(Cow::from("gzdoom")).as_ref(), if app.controls.gzdoom_normals {1} else {0});
 
-		glc.uniform_matrix_4_f32_slice(model.base.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, app.camera.view_projection().as_ref());
+		let mvp = app.camera.view_projection() * md3_model_matrix;
+		glc.uniform_matrix_4_f32_slice(model.base.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
 
 		if let Err(e) = render::render(
 			&glc,
@@ -349,7 +356,7 @@ unsafe {
 			let tag_b = &model.tags[tag_b];
 			let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
 			let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
-			let mvp = app.camera.view_projection() * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
+			let mvp = app.camera.view_projection() * md3_model_matrix * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
 
 			glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
 			glc.uniform_1_u32(app.axes.shader.borrow_mut().uniform_location(Cow::from("shaded")).as_ref(), 1);
@@ -427,9 +434,13 @@ egui_glow.run(wc.window(), |ctx| {
 				ui.horizontal(|ui| {
 					if ui.button(play_button_text).clicked() {
 						app.anim_playing = !app.anim_playing;
+						if app.anim_playing {
+							app.anim_start_time = Instant::now();
+							app.anim_start_frame = app.current_frame;
+						}
 					}
 					if app.anim_playing {
-						app.current_frame = if let std::ops::Bound::Included(&fc) = range.end_bound() {(Instant::now() - _app_start).as_secs_f32() % fc} else {0.};
+						app.current_frame = if let std::ops::Bound::Included(&fc) = range.end_bound() {((Instant::now() - app.anim_start_time).as_secs_f32() + app.anim_start_frame) % fc} else {0.};
 					}
 					ui.spacing_mut().slider_width = 400.;
 					ui.add(egui::Slider::new(&mut app.current_frame, range.clone()));
@@ -539,7 +550,7 @@ egui_glow.run(wc.window(), |ctx| {
 			let font = egui::style::default_text_styles()[&TextStyle::Small].clone();
 			let galley = painter.layout_no_wrap(tag_name, font, Color32::WHITE);
 			let pos = {
-				let pos = app.camera.view_projection().project_point3(tag_origin);
+				let pos = (app.camera.view_projection() * md3_model_matrix).project_point3(tag_origin);
 				let Vec3 {x, y, ..} = pos;
 				let x = x.mul_add(0.5, 0.5) * window_size.width;
 				// In OpenGL NDC, +y is up and -y is down

@@ -3,7 +3,8 @@ mod window;
 mod res;
 mod eye;
 mod render;
-mod eutil;
+mod err_util;
+mod str_util;
 
 use ahash::RandomState;
 use egui::{Color32, LayerId, TextStyle, Order, Pos2, Id};
@@ -30,6 +31,7 @@ use std::{
 use anyhow::Error as AError;
 use md3::MD3Model;
 use render::{BasicModel, BufferModel, VertexBuffer, IndexBuffer, Texture, ShaderProgram, TextureUnit, ShaderStage};
+use str_util::StringFromBytes;
 
 use egui_file::FileDialog;
 
@@ -492,7 +494,7 @@ egui_glow.run(wc.window(), |ctx| {
 						skin: {
 					let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
 						Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
-						String::from_utf8_lossy(&s.name)
+						String::from_utf8_stop(&s.name)
 						.trim_matches(|c| c == char::from_u32(0).unwrap())
 						.trim())))
 					).unwrap_or(Cow::from(OsString::new())));
@@ -524,7 +526,7 @@ egui_glow.run(wc.window(), |ctx| {
 			model.surfaces.iter().enumerate().for_each(|(index, surf)| {
 				egui::CollapsingHeader::new(format!("Surface {}", index)).show(ui, |ui| {
 					surf.shaders.iter().for_each(|sdr| {
-						ui.label(String::from_utf8_lossy(&sdr.name));
+						ui.label(String::from_utf8_stop(&sdr.name));
 					});
 				});
 			});
@@ -546,7 +548,7 @@ egui_glow.run(wc.window(), |ctx| {
 			let tag_a = &model.tags[tag_a];
 			let tag_b = &model.tags[tag_b];
 			let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
-			let tag_name = String::from_utf8_lossy(&tag_a.name).to_string();
+			let tag_name = String::from_utf8_stop(&tag_a.name).to_string();
 			let font = egui::style::default_text_styles()[&TextStyle::Small].clone();
 			let galley = painter.layout_no_wrap(tag_name, font, Color32::WHITE);
 			let pos = {

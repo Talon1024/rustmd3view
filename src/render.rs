@@ -15,7 +15,7 @@ use std::{
 	collections::HashMap,
 };
 use bytemuck::{Pod, Zeroable};
-use crate::eutil::gl_get_error;
+use crate::err_util::gl_get_error;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
@@ -162,17 +162,14 @@ pub trait IndexInteger { const GL_TYPE: u32; }
 impl IndexInteger for u8 { const GL_TYPE: u32 = glow::UNSIGNED_BYTE; }
 impl IndexInteger for u16 { const GL_TYPE: u32 = glow::UNSIGNED_SHORT; }
 impl IndexInteger for u32 { const GL_TYPE: u32 = glow::UNSIGNED_INT; }
-// impl IndexInteger for u64 { const GL_TYPE: u32 = glow::UNSIGNED_LONG; }
-// impl IndexInteger for u128 { const GL_TYPE: u32 = glow::UNSIGNED_LONG_LONG; }
-// impl IndexInteger for usize { const GL_TYPE: u32 = glow::UNSIGNED_PTR; }
-
 
 #[derive(Debug)]
 pub struct IndexBuffer<I> where I : IndexInteger + Pod {
 	glc: Arc<Context>,
 	ebo: <Context as HasContext>::Buffer,
 	size: i32,
-	itype: PhantomData<I> // Used for the index data type (see render function)
+	// Used to access OpenGL constant for the index data type (GL_TYPE)
+	itype: PhantomData<I>,
 }
 
 impl<I> IndexBuffer<I> where I : IndexInteger + Pod {

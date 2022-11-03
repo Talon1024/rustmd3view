@@ -385,7 +385,7 @@ unsafe {
 		let scale = Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
 		let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
 		let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
-		trans * proj * view * scale
+		trans * proj * view * scale * md3_model_matrix
 	};
 	glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
 	glc.uniform_1_u32(app.axes.shader.borrow_mut().uniform_location(Cow::from("shaded")).as_ref(), 0);

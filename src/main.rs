@@ -23,7 +23,7 @@ use std::{
 	ffi::OsString,
 	fs::File,
 	sync::Arc,
-	ops::{RangeInclusive, RangeBounds, Add, Mul},
+	ops::{RangeInclusive, RangeBounds, Bound, Add, Mul},
 	path::Path,
 	rc::Rc,
 	time::Instant,
@@ -442,7 +442,7 @@ egui_glow.run(wc.window(), |ctx| {
 						}
 					}
 					if app.anim_playing {
-						app.current_frame = if let std::ops::Bound::Included(&fc) = range.end_bound() {((Instant::now() - app.anim_start_time).as_secs_f32() + app.anim_start_frame) % fc} else {0.};
+						app.current_frame = if let Bound::Included(&fc) = range.end_bound() {((Instant::now() - app.anim_start_time).as_secs_f32() + app.anim_start_frame) % fc} else {0.};
 					}
 					ui.spacing_mut().slider_width = 400.;
 					ui.add(egui::Slider::new(&mut app.current_frame, range.clone()));
@@ -471,7 +471,7 @@ egui_glow.run(wc.window(), |ctx| {
 				println!("Model {} loaded successfully!", fpath.display());
 				let num_frames = model.frames.len();
 				app.frame_range = if num_frames > 1 {
-					Some(RangeInclusive::new(0., (num_frames - 1) as f32))
+					Some(0.0..=(num_frames - 1) as f32)
 				} else {
 					None
 				};

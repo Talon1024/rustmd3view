@@ -16,6 +16,7 @@ use std::{
 };
 use bytemuck::{Pod, Zeroable};
 use crate::err_util::gl_get_error;
+use once_cell::race::OnceBox;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
@@ -50,6 +51,64 @@ impl InterleavedVertexAttribute for VertexMD3 {
 		// attrib_index += 1;
 	}
 }
+
+trait ShaderUniforms {
+	fn set(&self, glc: &Context) -> ();
+}
+// Brainstorming
+/* 
+// Input
+pub struct UniformsMD3 {
+	pub gzdoom: bool,
+	pub anim: Rc<Texture>,
+	pub eye: Mat4,
+	pub frame: f32,
+	pub mode: u32,
+	pub tex: Rc<Texture>,
+}
+ */
+/* 
+// Output
+pub struct UniformsMD3 {
+	pub gzdoom: bool,
+	gzdoom_l_: Option<NativeUniformLocation>,
+	pub anim: Rc<Texture>,
+	anim_l_: Option<NativeUniformLocation>,
+	pub eye: Mat4,
+	eye_l_: Option<NativeUniformLocation>,
+	pub frame: f32,
+	frame_l_: Option<NativeUniformLocation>,
+	pub mode: u32,
+	mode_l_: Option<NativeUniformLocation>,
+	pub tex: Rc<Texture>,
+	tex_l_: Option<NativeUniformLocation>,
+}
+
+impl ShaderUniforms for UniformsMD3 {
+	fn set(&self, glc: &Context) {
+		let mut texture = TextureUnit(0);
+		unsafe {
+			glc.uniform_1_u32(self.gzdoom_l_.as_ref(), self.gzdoom as u32);
+
+			*texture += 1;
+			glc.active_texture(texture.gl_id());
+			glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
+			glc.uniform_1_i32(self.anim_l_.as_ref(), texture.gl_u());
+
+			glc.uniform_matrix_4_f32_slice(self.eye_l_.as_ref(), false, &self.eye.to_cols_array());
+
+			glc.uniform_1_f32(self.frame_l_.as_ref(), self.frame);
+
+			glc.uniform_1_u32(self.mode_l_.as_ref(), self.mode);
+
+			*texture += 1;
+			glc.active_texture(texture.gl_id());
+			glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
+			glc.uniform_1_i32(self.tex_l_.as_ref(), texture.gl_u());
+		}
+	}
+}
+ */
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
@@ -405,8 +464,16 @@ impl Drop for ShaderProgram {
 	}
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+pub static MAX_TEXTURE_UNITS: OnceBox<u8> = OnceBox::new();
+
+#[derive(Debug, Clone, Copy)]
 pub struct TextureUnit(pub u8);
+
+impl Default for TextureUnit {
+	fn default() -> Self {
+		Self(1)
+	}
+}
 
 impl Deref for TextureUnit {
 	type Target = u8;
@@ -422,8 +489,16 @@ impl DerefMut for TextureUnit {
 }
 
 impl TextureUnit {
-	pub fn gl_id(self) -> u32 {
+	#[inline]
+	pub fn max() -> u8 {
+		MAX_TEXTURE_UNITS.get().copied().unwrap_or(32)
+	}
+	pub fn slot(self) -> u32 {
+		let max_unit = Self::max();
 		match self.0 {
+			// All OpenGL implementations have at least 16 texture slots
+			// available
+			0 => 0,
 			1 => glow::TEXTURE0,
 			2 => glow::TEXTURE1,
 			3 => glow::TEXTURE2,
@@ -440,30 +515,34 @@ impl TextureUnit {
 			14 => glow::TEXTURE13,
 			15 => glow::TEXTURE14,
 			16 => glow::TEXTURE15,
-			17 => glow::TEXTURE16,
-			18 => glow::TEXTURE17,
-			19 => glow::TEXTURE18,
-			20 => glow::TEXTURE19,
-			21 => glow::TEXTURE20,
-			22 => glow::TEXTURE21,
-			23 => glow::TEXTURE22,
-			24 => glow::TEXTURE23,
-			25 => glow::TEXTURE24,
-			26 => glow::TEXTURE25,
-			27 => glow::TEXTURE26,
-			28 => glow::TEXTURE27,
-			29 => glow::TEXTURE28,
-			30 => glow::TEXTURE29,
-			31 => glow::TEXTURE30,
-			32 => glow::TEXTURE31,
-			_ => 0,
+			x if x == 17 && x < max_unit => glow::TEXTURE16,
+			x if x == 18 && x < max_unit => glow::TEXTURE17,
+			x if x == 19 && x < max_unit => glow::TEXTURE18,
+			x if x == 20 && x < max_unit => glow::TEXTURE19,
+			x if x == 21 && x < max_unit => glow::TEXTURE20,
+			x if x == 22 && x < max_unit => glow::TEXTURE21,
+			x if x == 23 && x < max_unit => glow::TEXTURE22,
+			x if x == 24 && x < max_unit => glow::TEXTURE23,
+			x if x == 25 && x < max_unit => glow::TEXTURE24,
+			x if x == 26 && x < max_unit => glow::TEXTURE25,
+			x if x == 27 && x < max_unit => glow::TEXTURE26,
+			x if x == 28 && x < max_unit => glow::TEXTURE27,
+			x if x == 29 && x < max_unit => glow::TEXTURE28,
+			x if x == 30 && x < max_unit => glow::TEXTURE29,
+			x if x == 31 && x < max_unit => glow::TEXTURE30,
+			x if x == 32 && x < max_unit => glow::TEXTURE31,
+			x => glow::TEXTURE0 + x.min(max_unit) as u32,
 		}
 	}
-	pub fn gl_u(self) -> i32 {
+	pub fn uniform(self) -> i32 {
+		let max_unit = Self::max();
 		match self.0 {
-			x if x >= 1 && x <= 32 => x - 1,
+			x if x >= 1 && x <= max_unit => x - 1,
 			_ => 0,
 		}.into()
+	}
+	pub fn next(&mut self) -> () {
+		self.0 += 1;
 	}
 }
 

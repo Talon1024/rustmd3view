@@ -459,9 +459,9 @@ dependencies = [
 
 [[package]]
 name = "egui_file"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51f31ba662c5b53ffaac30719dd08eee4a97f48385d71ac9632b701dceb2b5c5"
+checksum = "44f95b7d634937d4f9ddd4056d8bacc380c4c6bc3112cebdfae4c37f33e79f4f"
 dependencies = [
  "egui",
 ]
@@ -1145,9 +1145,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.15.0"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e82dad04139b71a90c080c8463fe0dc7902db5192d939bd0950f074d014339e1"
+checksum = "86f0b0d4bf799edbc74508c1e8bf170ff5f41238e5f8225603ca7caaae2b7860"
 
 [[package]]
 name = "osmesa-sys"
@@ -1340,6 +1340,7 @@ dependencies = [
  "glow",
  "glutin",
  "image",
+ "once_cell",
  "thiserror",
 ]
 

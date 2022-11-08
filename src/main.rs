@@ -230,7 +230,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 	};
 	let mut window_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
 	let md3_model_matrix = Mat4::from_scale(Vec3::new(1., -1., 1.));
-	unsafe { glc.clear_color(0., 0., 0., 1.); }
+	unsafe {
+		glc.clear_color(0., 0., 0., 1.);
+		match render::MAX_TEXTURE_UNITS.set(
+			Box::new(glc.get_parameter_i32(glow::MAX_TEXTURE_IMAGE_UNITS)
+				.try_into().unwrap_or(u8::MAX))
+		).map_err(|_| format!("Maximum number of texture units already set!")) {
+			Ok(_) => println!("Maximum texture units: {}",
+				render::MAX_TEXTURE_UNITS.get().copied().unwrap()),
+			Err(e) => println!("{}", e),
+		}
+	}
 	el.run(move |event, _window, control_flow| {
 		match event {
 			Event::WindowEvent { window_id: _, event } => {
@@ -313,17 +323,17 @@ unsafe {
 	glc.cull_face(glow::BACK);
 	app.models.iter().for_each(|model| {
 		model.base.shader.borrow().activate().unwrap();
-		let mut texture = TextureUnit(1);
+		let mut texture = TextureUnit::default();
 
-		glc.active_texture(texture.gl_id());
+		glc.active_texture(texture.slot());
 		glc.bind_texture(glow::TEXTURE_2D, Some(model.skin.tex()));
-		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("tex")).as_ref(), texture.gl_u());
+		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("tex")).as_ref(), texture.uniform());
 
-		*texture += 1;
+		texture.next();
 
-		glc.active_texture(texture.gl_id());
+		glc.active_texture(texture.slot());
 		glc.bind_texture(glow::TEXTURE_2D, model.animation.as_ref().map(Texture::tex));
-		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("anim")).as_ref(), texture.gl_u());
+		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("anim")).as_ref(), texture.uniform());
 
 		glc.uniform_1_f32(model.base.shader.borrow_mut().uniform_location(Cow::from("frame")).as_ref(), app.current_frame);
 

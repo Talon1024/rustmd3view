@@ -334,8 +334,13 @@ unsafe {
 	glc.depth_func(glow::LESS);
 	glc.enable(glow::CULL_FACE);
 	glc.cull_face(glow::BACK);
-	app.models.iter().for_each(|model| {
-		if let Err(e) = model.render(&glc) {
+	app.models.iter_mut().for_each(|model| {
+		if let Err(e) = model.render(&glc, |uniforms| {
+			uniforms.eye = app.camera.view_projection() * md3_model_matrix;
+			uniforms.frame = app.current_frame;
+			uniforms.mode = app.controls.view_mode as u32;
+			uniforms.gzdoom = app.controls.gzdoom_normals;
+		}) {
 			eprintln!("{:?}", e);
 		}
 	});
@@ -356,9 +361,12 @@ if let Some(model) = app.model_data.as_ref() {
 		let tag_b = &model.tags[tag_b];
 		let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
 		let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
-		let _mvp = app.camera.view_projection() * md3_model_matrix * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
+		let mvp = app.camera.view_projection() * md3_model_matrix * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
 
-		if let Err(e) = app.tag_axes.render(&glc) {
+		if let Err(e) = app.tag_axes.render(&glc, |uniforms| {
+			uniforms.eye = mvp;
+			uniforms.shaded = true;
+		}) {
 			eprintln!("{:?}", e);
 		}
 	});
@@ -370,7 +378,7 @@ unsafe {
 	glc.depth_func(glow::ALWAYS);
 }
 app.axes.shader.borrow().activate().unwrap();
-let _mvp = {
+let mvp = {
 	let eye = Vec3::new(
 		app.camera.longtude.cos() * app.camera.latitude.cos(),
 		app.camera.longtude.sin() * app.camera.latitude.cos(),
@@ -384,7 +392,10 @@ let _mvp = {
 	trans * proj * view * scale * md3_model_matrix
 };
 
-if let Err(e) = app.axes.render(&glc) {
+if let Err(e) = app.axes.render(&glc, |uniforms| {
+	uniforms.eye = mvp;
+	uniforms.shaded = false;
+}) {
 	eprintln!("{:?}", e);
 }
 

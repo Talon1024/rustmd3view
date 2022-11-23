@@ -207,7 +207,7 @@ impl InterleavedVertexAttribute for VertexRes {
 #[derive(Debug, Clone, Default)]
 pub struct UniformsRes {
 	pub eye: Mat4,
-	pub shaded: u32,
+	pub shaded: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -230,7 +230,7 @@ impl ShaderUniforms<UniformsResLocations> for UniformsRes {
 		let mut _texture = TextureUnit::default();
 		unsafe {
 			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, self.eye.to_cols_array().as_slice());
-			glc.uniform_1_u32(locations.shaded.as_ref(), self.shaded);
+			glc.uniform_1_u32(locations.shaded.as_ref(), self.shaded as u32);
 		}
 	}
 }
@@ -637,9 +637,10 @@ impl<I, U, L> BasicModel<I, U, L> where
 	U: ShaderUniforms<L>,
 	L: ShaderUniformLocations + Default
 {
-	pub fn render(&self, glc: &Context/* , modify_uniforms: FnOnce(&mut U) -> () */) -> Result<(), Box<dyn Error>> {
+	pub fn render<F>(&mut self, glc: &Context, modify_uniforms: F) -> Result<(), Box<dyn Error>>
+	where F: Fn(&mut U) -> () {
 		self.shader.borrow().activate()?;
-		// modify_uniforms(&mut self.uniforms);
+		modify_uniforms(&mut self.uniforms);
 		self.uniforms.set(glc, &self.shader.borrow().locations);
 		unsafe {
 			glc.bind_vertex_array(Some(self.vertex.vao));

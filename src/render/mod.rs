@@ -1,10 +1,8 @@
-use ahash::RandomState;
-use glam::{Vec2, Vec3};
+use glam::{Vec2, Vec3, Mat4};
 use crate::md3::MD3Surface;
 use crate::res::{Surface, SurfaceType};
-use glow::{Context, HasContext};
+use glow::{Context, HasContext, NativeUniformLocation};
 use std::{
-	borrow::Cow,
 	error::Error,
 	mem,
 	ops::{Deref, DerefMut},
@@ -12,11 +10,13 @@ use std::{
 	cell::RefCell,
 	sync::Arc,
 	marker::PhantomData,
-	collections::HashMap,
 };
 use bytemuck::{Pod, Zeroable};
 use crate::err_util::gl_get_error;
 use once_cell::race::OnceBox;
+
+// #[macro_use]
+// mod macros;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
@@ -52,8 +52,12 @@ impl InterleavedVertexAttribute for VertexMD3 {
 	}
 }
 
-trait ShaderUniforms {
-	fn set(&self, glc: &Context) -> ();
+pub trait ShaderUniformLocations : Default {
+	fn setup(&mut self, glc: &Context, program: <Context as HasContext>::Program);
+}
+
+pub trait ShaderUniforms<L> where L: ShaderUniformLocations {
+	fn set(&self, glc: &Context, locations: &L) -> ();
 }
 // Brainstorming
 /* 
@@ -91,9 +95,9 @@ impl ShaderUniforms for UniformsMD3 {
 			glc.uniform_1_u32(self.gzdoom_l_.as_ref(), self.gzdoom as u32);
 
 			*texture += 1;
-			glc.active_texture(texture.gl_id());
+			glc.active_texture(texture.slot());
 			glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
-			glc.uniform_1_i32(self.anim_l_.as_ref(), texture.gl_u());
+			glc.uniform_1_i32(self.anim_l_.as_ref(), texture.uniform());
 
 			glc.uniform_matrix_4_f32_slice(self.eye_l_.as_ref(), false, &self.eye.to_cols_array());
 
@@ -102,13 +106,71 @@ impl ShaderUniforms for UniformsMD3 {
 			glc.uniform_1_u32(self.mode_l_.as_ref(), self.mode);
 
 			*texture += 1;
-			glc.active_texture(texture.gl_id());
+			glc.active_texture(texture.slot());
 			glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
-			glc.uniform_1_i32(self.tex_l_.as_ref(), texture.gl_u());
+			glc.uniform_1_i32(self.tex_l_.as_ref(), texture.uniform());
 		}
 	}
 }
  */
+
+// TODO: Macro-ize!
+#[derive(Debug, Clone)]
+pub struct UniformsMD3 {
+	pub gzdoom: bool,
+	pub anim: Rc<Texture>,
+	pub eye: Mat4,
+	pub frame: f32,
+	pub mode: u32,
+	pub tex: Rc<Texture>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UniformsMD3Locations {
+	gzdoom: Option<NativeUniformLocation>,
+	anim: Option<NativeUniformLocation>,
+	eye: Option<NativeUniformLocation>,
+	frame: Option<NativeUniformLocation>,
+	mode: Option<NativeUniformLocation>,
+	tex: Option<NativeUniformLocation>,
+}
+
+impl ShaderUniformLocations for UniformsMD3Locations {
+	fn setup(&mut self, glc: &Context, program: <Context as HasContext>::Program) {
+		unsafe {
+			self.gzdoom = glc.get_uniform_location(program, "gzdoom");
+			self.anim = glc.get_uniform_location(program, "anim");
+			self.eye = glc.get_uniform_location(program, "eye");
+			self.frame = glc.get_uniform_location(program, "frame");
+			self.mode = glc.get_uniform_location(program, "mode");
+			self.tex = glc.get_uniform_location(program, "tex");
+		}
+	}
+}
+
+impl ShaderUniforms<UniformsMD3Locations> for UniformsMD3 {
+	fn set(&self, glc: &Context, locations: &UniformsMD3Locations) -> () {
+		let mut texture = TextureUnit::default();
+		unsafe {
+			glc.uniform_1_u32(locations.gzdoom.as_ref(), self.gzdoom as u32);
+
+			glc.active_texture(texture.slot());
+			glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
+			glc.uniform_1_i32(locations.anim.as_ref(), texture.uniform());
+
+			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, &self.eye.to_cols_array());
+
+			glc.uniform_1_f32(locations.frame.as_ref(), self.frame);
+
+			glc.uniform_1_u32(locations.mode.as_ref(), self.mode);
+
+			texture.next();
+			glc.active_texture(texture.slot());
+			glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
+			glc.uniform_1_i32(locations.tex.as_ref(), texture.uniform());
+		}
+	}
+}
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
@@ -138,6 +200,38 @@ impl InterleavedVertexAttribute for VertexRes {
 		glc.enable_vertex_attrib_array(attrib_index);
 		// offset += mem::size_of::<Vec3>() as i32;
 		// attrib_index += 1;
+	}
+}
+
+// TODO: Macro-ize!
+#[derive(Debug, Clone, Default)]
+pub struct UniformsRes {
+	pub eye: Mat4,
+	pub shaded: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UniformsResLocations {
+	eye: Option<NativeUniformLocation>,
+	shaded: Option<NativeUniformLocation>,
+}
+
+impl ShaderUniformLocations for UniformsResLocations {
+	fn setup(&mut self, glc: &Context, program: <Context as HasContext>::Program) {
+		unsafe {
+			self.eye = glc.get_uniform_location(program, "eye");
+			self.shaded = glc.get_uniform_location(program, "shaded");
+		}
+	}
+}
+
+impl ShaderUniforms<UniformsResLocations> for UniformsRes {
+	fn set(&self, glc: &Context, locations: &UniformsResLocations) -> () {
+		let mut _texture = TextureUnit::default();
+		unsafe {
+			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, self.eye.to_cols_array().as_slice());
+			glc.uniform_1_u32(locations.shaded.as_ref(), self.shaded);
+		}
 	}
 }
 
@@ -341,12 +435,14 @@ impl Texture {
 }
 
 #[derive(Debug)]
-pub struct ShaderProgram {
+pub struct ShaderProgram<L>
+where L: ShaderUniformLocations + Default {
 	glc: Arc<Context>,
 	prog: <Context as HasContext>::Program,
 	shaders: Vec<<Context as HasContext>::Shader>,
-	uniform_locations: HashMap<String, Option<<Context as HasContext>::UniformLocation>, RandomState>,
 	ready: bool,
+	// Make sure uniform structs match
+	locations: L,
 }
 
 pub enum ShaderStage {
@@ -365,7 +461,8 @@ impl From<ShaderStage> for u32 {
 	}
 }
 
-impl ShaderProgram {
+impl<L> ShaderProgram<L>
+where L: ShaderUniformLocations + Default {
 	pub fn new(glc: Arc<Context>) -> Result<Self, Box<dyn Error>> {
 		unsafe {
 			let prog = glc.create_program()?;
@@ -373,8 +470,8 @@ impl ShaderProgram {
 				glc,
 				prog,
 				shaders: vec![],
-				uniform_locations: HashMap::default(),
 				ready: false,
+				locations: L::default(),
 			})
 		}
 	}
@@ -411,32 +508,9 @@ impl ShaderProgram {
 			}
 			self.shaders.clear();
 		}
-		#[cfg(feature = "preload_uniforms")]
-		unsafe {
-			let num_uniforms = glc.get_active_uniforms(self.prog);
-			for uindex in 0..num_uniforms {
-				let uniform = glc.get_active_uniform(self.prog, uindex).unwrap().name;
-				let location = glc.get_uniform_location(self.prog, &uniform);
-				self.uniform_locations.insert(uniform, location);
-			}
-		}
+		self.locations.setup(glc, self.prog);
 		self.ready = true;
 		Ok(())
-	}
-	#[cfg(not(feature = "preload_uniforms"))]
-	pub fn uniform_location(&mut self, name: Cow<str>) -> Option<<Context as HasContext>::UniformLocation> {
-		if let Some(value) = self.uniform_locations.get(name.as_ref()) {
-			value.clone()
-		} else {
-			let glc = &self.glc;
-			let value = unsafe { glc.get_uniform_location(self.prog, &name) };
-			self.uniform_locations.insert(name.to_string(), value);
-			value.clone()
-		}
-	}
-	#[cfg(feature = "preload_uniforms")]
-	pub fn uniform_location(&self, name: Cow<str>) -> Option<<Context as HasContext>::UniformLocation> {
-		self.uniform_locations.get(name.as_ref()).cloned()
 	}
 	pub fn activate(&self) -> Result<(), String> {
 		if !self.ready {
@@ -450,7 +524,8 @@ impl ShaderProgram {
 	}
 }
 
-impl Drop for ShaderProgram {
+impl<L> Drop for ShaderProgram<L>
+where L: ShaderUniformLocations + Default {
 	fn drop(&mut self) {
 		#[cfg(feature = "log_drop_gl_resources")]
 		println!("Drop ShaderProgram");
@@ -546,61 +621,32 @@ impl TextureUnit {
 	}
 }
 
-pub struct BasicModel<I> where I : IndexInteger + Pod {
+pub struct BasicModel<I, U, L> where
+	I : IndexInteger + Pod,
+	U: ShaderUniforms<L>,
+	L: ShaderUniformLocations + Default
+{
 	pub vertex: VertexBuffer,
 	pub index: IndexBuffer<I>,
-	pub shader: Rc<RefCell<ShaderProgram>>,
+	pub shader: Rc<RefCell<ShaderProgram<L>>>,
+	pub uniforms: U,
 }
 
-pub struct BufferModel<I> where I : IndexInteger + Pod {
-	pub base: BasicModel<I>,
-	pub skin: Rc<Texture>,
-	pub animation: Option<Texture>,
-}
-
-#[inline]
-pub fn render<I>(
-	glc: &Context,
-	vertices: &VertexBuffer,
-	indices: &IndexBuffer<I>) -> Result<(), Box<dyn Error>>
-where
-	I : IndexInteger + Pod {
-	unsafe {
-		glc.bind_vertex_array(Some(vertices.vao));
-		glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(indices.ebo));
-		glc.draw_elements(
-		glow::TRIANGLES, indices.size, I::GL_TYPE, 0);
-		gl_get_error(glc)?;
+impl<I, U, L> BasicModel<I, U, L> where
+	I : IndexInteger + Pod,
+	U: ShaderUniforms<L>,
+	L: ShaderUniformLocations + Default
+{
+	pub fn render(&self, glc: &Context/* , modify_uniforms: FnOnce(&mut U) -> () */) -> Result<(), Box<dyn Error>> {
+		self.shader.borrow().activate()?;
+		// modify_uniforms(&mut self.uniforms);
+		self.uniforms.set(glc, &self.shader.borrow().locations);
+		unsafe {
+			glc.bind_vertex_array(Some(self.vertex.vao));
+			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index.ebo));
+			glc.draw_elements(glow::TRIANGLES, self.index.size, I::GL_TYPE, 0);
+			gl_get_error(glc)?;
+		}
+		Ok(())
 	}
-	Ok(())
 }
-
-/* 
-pub fn build_vbuffer(surf: &MD3Surface) -> Vec<Vertex> {
-	surf.triangles.iter().flat_map(|t| t.0)
-		.map(|idx| Vertex {index: idx, uv: surf.texcoords[idx as usize].0})
-		.collect()
-}
- */
-/* 
-pub fn build_ivbuffers(surf: &MD3Surface) -> (Vec<u32>, Vec<Vertex>) {
-	let vertices = surf.texcoords.iter().enumerate().map(
-		|(index, uv)| {let uv = uv.0; Vertex {index: index as u32, uv}})
-		.collect();
-	let indices = surf.triangles.iter().flat_map(|t| t.0)
-		.collect();
-	(indices, vertices)
-}
- */
-/* 
-pub fn upload_ibuffer(buffer: &[u32], glc: &Context) -> Result<(), Box<dyn Error>> {
-	unsafe {
-		let ebo = glc.create_buffer()?;
-		glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-		let buf_bytes: Box<[u8]> = buffer.iter().copied().flat_map(u32::to_ne_bytes).collect();
-		glc.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, &buf_bytes, glow::STATIC_DRAW);
-		glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
-	}
-	Ok(())
-}
- */

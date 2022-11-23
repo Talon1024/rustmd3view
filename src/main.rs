@@ -30,7 +30,18 @@ use std::{
 };
 use anyhow::Error as AError;
 use md3::MD3Model;
-use render::{BasicModel, BufferModel, VertexBuffer, IndexBuffer, Texture, ShaderProgram, TextureUnit, ShaderStage};
+use render::{
+	BasicModel,
+	VertexBuffer,
+	IndexBuffer,
+	Texture,
+	ShaderProgram,
+	ShaderStage,
+	UniformsMD3,
+	UniformsMD3Locations,
+	UniformsRes,
+	UniformsResLocations,
+};
 use str_util::StringFromBytes;
 
 use egui_file::FileDialog;
@@ -109,9 +120,9 @@ struct App {
 	anim_start_frame: f32,
 	frame_range: Option<RangeInclusive<f32>>,
 	error_message: Option<String>,
-	models: Vec<BufferModel<u32>>,
-	axes: BasicModel<u8>,
-	tag_axes: BasicModel<u8>,
+	models: Vec<BasicModel<u32, UniformsMD3, UniformsMD3Locations>>,
+	axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
+	tag_axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
 	camera: OrbitCamera,
 	controls: AppControls,
 	texture_cache: TextureCache,
@@ -143,11 +154,13 @@ impl App {
 				vertex: VertexBuffer::new(Arc::clone(glc), Box::new(res::AXES_V)),
 				index: IndexBuffer::new(Arc::clone(glc), Vec::from(res::AXES_I)),
 				shader: Rc::clone(&axes_shader),
+				uniforms: UniformsRes::default(),
 			},
 			tag_axes: BasicModel {
 				vertex: VertexBuffer::new(Arc::clone(glc), Box::new(res::TAGAXES_V)),
 				index: IndexBuffer::new(Arc::clone(glc), Vec::from(res::TAGAXES_I)),
 				shader: Rc::clone(&axes_shader),
+				uniforms: UniformsRes::default(),
 			},
 			controls: AppControls::default(),
 			camera: OrbitCamera::default(),
@@ -322,92 +335,59 @@ unsafe {
 	glc.enable(glow::CULL_FACE);
 	glc.cull_face(glow::BACK);
 	app.models.iter().for_each(|model| {
-		model.base.shader.borrow().activate().unwrap();
-		let mut texture = TextureUnit::default();
-
-		glc.active_texture(texture.slot());
-		glc.bind_texture(glow::TEXTURE_2D, Some(model.skin.tex()));
-		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("tex")).as_ref(), texture.uniform());
-
-		texture.next();
-
-		glc.active_texture(texture.slot());
-		glc.bind_texture(glow::TEXTURE_2D, model.animation.as_ref().map(Texture::tex));
-		glc.uniform_1_i32(model.base.shader.borrow_mut().uniform_location(Cow::from("anim")).as_ref(), texture.uniform());
-
-		glc.uniform_1_f32(model.base.shader.borrow_mut().uniform_location(Cow::from("frame")).as_ref(), app.current_frame);
-
-		glc.uniform_1_u32(model.base.shader.borrow_mut().uniform_location(Cow::from("mode")).as_ref(), app.controls.view_mode as u32);
-
-		glc.uniform_1_u32(model.base.shader.borrow_mut().uniform_location(Cow::from("gzdoom")).as_ref(), if app.controls.gzdoom_normals {1} else {0});
-
-		let mvp = app.camera.view_projection() * md3_model_matrix;
-		glc.uniform_matrix_4_f32_slice(model.base.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
-
-		if let Err(e) = render::render(
-			&glc,
-			&model.base.vertex,
-			&model.base.index) {
+		if let Err(e) = model.render(&glc) {
 			eprintln!("{:?}", e);
 		}
 	});
 }
 // DRAW TAG AXES
 // ==================================================================
-unsafe {
-	app.tag_axes.shader.borrow().activate().unwrap();
-	if let Some(model) = app.model_data.as_ref() {
-		let current_frame = app.current_frame.floor() as usize;
-		let next_frame = app.current_frame.ceil() as usize;
-		let lerp_factor = app.current_frame.fract();
-		let num_tags = model.num_tags;
-		(0..num_tags).for_each(|tag_index| {
-			let tag_a = tag_index + num_tags * current_frame;
-			let tag_b = tag_index + num_tags * next_frame;
-			let tag_a = &model.tags[tag_a];
-			let tag_b = &model.tags[tag_b];
-			let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
-			let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
-			let mvp = app.camera.view_projection() * md3_model_matrix * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
 
-			glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
-			glc.uniform_1_u32(app.axes.shader.borrow_mut().uniform_location(Cow::from("shaded")).as_ref(), 1);
-			if let Err(e) = render::render(
-				&glc,
-				&app.tag_axes.vertex,
-				&app.tag_axes.index) {
-				eprintln!("{:?}", e);
-			}
-		});
-	}
+app.tag_axes.shader.borrow().activate().unwrap();
+if let Some(model) = app.model_data.as_ref() {
+	let current_frame = app.current_frame.floor() as usize;
+	let next_frame = app.current_frame.ceil() as usize;
+	let lerp_factor = app.current_frame.fract();
+	let num_tags = model.num_tags;
+	(0..num_tags).for_each(|tag_index| {
+		let tag_a = tag_index + num_tags * current_frame;
+		let tag_b = tag_index + num_tags * next_frame;
+		let tag_a = &model.tags[tag_a];
+		let tag_b = &model.tags[tag_b];
+		let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
+		let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
+		let _mvp = app.camera.view_projection() * md3_model_matrix * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
+
+		if let Err(e) = app.tag_axes.render(&glc) {
+			eprintln!("{:?}", e);
+		}
+	});
 }
+
 // DRAW AXES
 // ==================================================================
 unsafe {
 	glc.depth_func(glow::ALWAYS);
-	app.axes.shader.borrow().activate().unwrap();
-	let mvp = {
-		let eye = Vec3::new(
-			app.camera.longtude.cos() * app.camera.latitude.cos(),
-			app.camera.longtude.sin() * app.camera.latitude.cos(),
-			app.camera.latitude.sin(),
-		) * -60.;
-		// 160 pixels left from top right corner, 80 pixels down from top right corner
-		let trans = Mat4::from_translation(Vec3::new(1.0 - (320./window_size.width), 1.0 - (160./window_size.height), 0.));
-		let scale = Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
-		let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
-		let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
-		trans * proj * view * scale * md3_model_matrix
-	};
-	glc.uniform_matrix_4_f32_slice(app.axes.shader.borrow_mut().uniform_location(Cow::from("eye")).as_ref(), false, mvp.as_ref());
-	glc.uniform_1_u32(app.axes.shader.borrow_mut().uniform_location(Cow::from("shaded")).as_ref(), 0);
-	if let Err(e) = render::render(
-		&glc,
-		&app.axes.vertex,
-		&app.axes.index) {
-		eprintln!("{:?}", e);
-	}
 }
+app.axes.shader.borrow().activate().unwrap();
+let _mvp = {
+	let eye = Vec3::new(
+		app.camera.longtude.cos() * app.camera.latitude.cos(),
+		app.camera.longtude.sin() * app.camera.latitude.cos(),
+		app.camera.latitude.sin(),
+	) * -60.;
+	// 160 pixels left from top right corner, 80 pixels down from top right corner
+	let trans = Mat4::from_translation(Vec3::new(1.0 - (320./window_size.width), 1.0 - (160./window_size.height), 0.));
+	let scale = Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
+	let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
+	let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
+	trans * proj * view * scale * md3_model_matrix
+};
+
+if let Err(e) = app.axes.render(&glc) {
+	eprintln!("{:?}", e);
+}
+
 // DRAW EGUI
 // ==================================================================
 egui_glow.run(wc.window(), |ctx| {
@@ -491,38 +471,42 @@ egui_glow.run(wc.window(), |ctx| {
 				app.model_data = Some(Box::new(model));
 				app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
 				app.models = app.model_data.as_ref().unwrap().surfaces
-				.iter().map(|surf| {
+				.iter().filter_map(|surf| {
 					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
 					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
-					let an = Texture::try_from_surface(Arc::clone(&glc), &surf.make_animation_surface()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok();
-					BufferModel {
-						base: BasicModel {
-							vertex: vb,
-							index: ib,
-							shader: Rc::clone(&md3_shader),
-						},
-						skin: {
-					let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
-						Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
-						String::from_utf8_stop(&s.name)
-						.trim_matches(|c| c == char::from_u32(0).unwrap())
-						.trim())))
-					).unwrap_or(Cow::from(OsString::new())));
-					if let Some(e) = error {
-						match &mut app.error_message {
-							Some(ee) => {
-								ee.push('\n');
-								ee.push_str(&e.to_string());
+					let an = Texture::try_from_surface(Arc::clone(&glc), &surf.make_animation_surface()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok()?;
+					Some(BasicModel {
+						vertex: vb,
+						index: ib,
+						shader: Rc::clone(&md3_shader),
+						uniforms: UniformsMD3 {
+							tex: {
+let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
+	Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
+	String::from_utf8_stop(&s.name)
+	.trim_matches(|c| c == char::from_u32(0).unwrap())
+	.trim())))
+).unwrap_or(Cow::from(OsString::new())));
+if let Some(e) = error {
+	match &mut app.error_message {
+		Some(ee) => {
+			ee.push('\n');
+			ee.push_str(&e.to_string());
+		},
+		None => {
+			app.error_message = Some(e.to_string());
+		},
+	}
+}
+texture
 							},
-							None => {
-								app.error_message = Some(e.to_string());
-							},
+							anim: Rc::new(an),
+							gzdoom: Default::default(),
+							eye: Default::default(),
+							frame: Default::default(),
+							mode: Default::default(),
 						}
-					}
-					texture
-						},
-						animation: an,
-					}
+					})
 				}).collect();
 				Ok(())
 			}) {

@@ -334,17 +334,18 @@ unsafe {
 	glc.depth_func(glow::LESS);
 	glc.enable(glow::CULL_FACE);
 	glc.cull_face(glow::BACK);
-	app.models.iter_mut().for_each(|model| {
-		if let Err(e) = model.render(&glc, |uniforms| {
-			uniforms.eye = app.camera.view_projection() * md3_model_matrix;
-			uniforms.frame = app.current_frame;
-			uniforms.mode = app.controls.view_mode as u32;
-			uniforms.gzdoom = app.controls.gzdoom_normals;
-		}) {
-			eprintln!("{:?}", e);
-		}
-	});
 }
+app.models.iter_mut().for_each(|model| {
+	if let Err(e) = model.render(&glc, |uniforms| {
+		uniforms.eye = app.camera.view_projection() * md3_model_matrix;
+		uniforms.frame = app.current_frame;
+		uniforms.mode = app.controls.view_mode as u32;
+		uniforms.gzdoom = app.controls.gzdoom_normals;
+	}) {
+		eprintln!("{:?}", e);
+	}
+});
+
 // DRAW TAG AXES
 // ==================================================================
 

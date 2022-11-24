@@ -17,7 +17,6 @@ use res::{AppResources, Surface};
 use std::{
 	borrow::Cow,
 	collections::HashMap,
-	error::Error,
 	f32::consts::FRAC_PI_2,
 	ffi::OsString,
 	fs::File,
@@ -57,7 +56,7 @@ impl TextureCache {
 		cache.insert(String::from(NULL_TEXTURE_NAME), Rc::new(Texture::try_from_surface(glc, null_texture).unwrap()));
 		Self { cache }
 	}
-	fn get(&mut self, glc: Arc<GLContext>, path: &dyn AsRef<Path>) -> (Rc<Texture>, Option<Box<dyn Error>>) {
+	fn get(&mut self, glc: Arc<GLContext>, path: &dyn AsRef<Path>) -> (Rc<Texture>, Option<AError>) {
 		let null_key = Cow::from(NULL_TEXTURE_NAME);
 		let path = path.as_ref();
 		let key = path.to_string_lossy();
@@ -76,12 +75,16 @@ impl TextureCache {
 						(myref, None)
 					},
 					Err(e) => {
-						(Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap()), Some(format!("Could not load texture {}: {:?}", path.display(), e).into()))
+						(Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap()),
+						Some(AError::msg(format!("Could not load texture {}: {:?}", path.display(), e)))
+						)
 					},
 				}
 			},
 			Err(e) => {
-				(Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap()), Some(format!("Could not load texture {}: {:?}", path.display(), e).into()))
+				(Rc::clone(self.cache.get(null_key.as_ref()).as_ref().unwrap()),
+				Some(AError::msg(format!("Could not load texture {}: {:?}", path.display(), e)))
+				)
 			},
 		}
 	}
@@ -222,7 +225,7 @@ const LOOK_LIMIT: f32 = {
 	unsafe{mem::transmute::<u32, f32>(v ^ lowest_bit)}
 };
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), AError> {
 	let app_res = AppResources::try_load(None)?;
 	let el = EventLoopBuilder::new().build();
 	let (wc, glc) = window::create_window(&el, None);

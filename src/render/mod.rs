@@ -1,9 +1,9 @@
+use anyhow::Error as AError;
 use glam::{Vec2, Vec3, Mat4};
 use crate::md3::MD3Surface;
 use crate::res::{Surface, SurfaceType};
 use glow::{Context, HasContext, NativeUniformLocation};
 use std::{
-	error::Error,
 	mem,
 	ops::{Deref, DerefMut},
 	rc::Rc,
@@ -377,9 +377,9 @@ impl Drop for Texture {
 }
 
 impl Texture {
-	pub fn try_from_surface(glc: Arc<Context>, tex: &Surface) -> Result<Self, Box<dyn Error>> {
+	pub fn try_from_surface(glc: Arc<Context>, tex: &Surface) -> Result<Self, AError> {
 		unsafe {
-			let texture = glc.create_texture()?;
+			let texture = glc.create_texture().map_err(AError::msg)?;
 			glc.bind_texture(glow::TEXTURE_2D, Some(texture));
 			// NOTE: 16-bit images are untested!
 			let tex_iformat: i32 = match tex.texture_type {
@@ -462,9 +462,9 @@ impl From<ShaderStage> for u32 {
 
 impl<L> ShaderProgram<L>
 where L: ShaderUniformLocations + Default {
-	pub fn new(glc: Arc<Context>) -> Result<Self, Box<dyn Error>> {
+	pub fn new(glc: Arc<Context>) -> Result<Self, AError> {
 		unsafe {
-			let prog = glc.create_program()?;
+			let prog = glc.create_program().map_err(AError::msg)?;
 			Ok(Self {
 				glc,
 				prog,
@@ -474,23 +474,23 @@ where L: ShaderUniformLocations + Default {
 			})
 		}
 	}
-	pub fn add_shader(&mut self, stage: ShaderStage, source: &str) -> Result<(), String> {
+	pub fn add_shader(&mut self, stage: ShaderStage, source: &str) -> Result<(), AError> {
 		let glc = &self.glc;
 		let stage = u32::from(stage);
 		unsafe {
-			let shader = glc.create_shader(stage)?;
+			let shader = glc.create_shader(stage).map_err(AError::msg)?;
 			glc.shader_source(shader, source);
 			glc.compile_shader(shader);
 			if !glc.get_shader_compile_status(shader) {
 				let e = Err(glc.get_shader_info_log(shader));
 				glc.delete_shader(shader);
-				return e;
+				return e.map_err(AError::msg);
 			}
 			self.shaders.push(shader);
 		}
 		Ok(())
 	}
-	pub fn prepare(&mut self) -> Result<(), String> {
+	pub fn prepare(&mut self) -> Result<(), AError> {
 		let glc = &self.glc;
 		unsafe {
 			for shader in self.shaders.iter().copied() {
@@ -500,7 +500,7 @@ where L: ShaderUniformLocations + Default {
 			if !glc.get_program_link_status(self.prog) {
 				let e = Err(glc.get_program_info_log(self.prog));
 				glc.delete_program(self.prog);
-				return e;
+				return e.map_err(AError::msg);
 			}
 			for shader in self.shaders.iter().copied() {
 				glc.delete_shader(shader);
@@ -511,9 +511,9 @@ where L: ShaderUniformLocations + Default {
 		self.ready = true;
 		Ok(())
 	}
-	pub fn activate(&self) -> Result<(), String> {
+	pub fn activate(&self) -> Result<(), AError> {
 		if !self.ready {
-			return Err(String::from("Not ready"));
+			return Err(AError::msg("Not ready"));
 		}
 		let glc = &self.glc;
 		unsafe {
@@ -636,7 +636,7 @@ impl<I, U, L> BasicModel<I, U, L> where
 	U: ShaderUniforms<L>,
 	L: ShaderUniformLocations + Default
 {
-	pub fn render<F>(&mut self, glc: &Context, modify_uniforms: F) -> Result<(), Box<dyn Error>>
+	pub fn render<F>(&mut self, glc: &Context, modify_uniforms: F) -> Result<(), AError>
 	where F: Fn(&mut U) -> () {
 		self.shader.activate()?;
 		modify_uniforms(&mut self.uniforms);

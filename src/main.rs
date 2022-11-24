@@ -16,7 +16,6 @@ use glutin::event::Event;
 use res::{AppResources, Surface};
 use std::{
 	borrow::Cow,
-	cell::RefCell,
 	collections::HashMap,
 	error::Error,
 	f32::consts::FRAC_PI_2,
@@ -135,7 +134,7 @@ impl App {
 			sp.add_shader(ShaderStage::Vertex, &res.res_vertex_shader).unwrap();
 			sp.add_shader(ShaderStage::Fragment, &res.res_pixel_shader).unwrap();
 			sp.prepare().unwrap();
-			Rc::new(RefCell::new(sp))
+			Rc::new(sp)
 		};
 		App {
 			open_file_dialog: FileDialog::open_file(None)
@@ -230,13 +229,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 	let glc = Arc::new(glc);
 	let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
 	let mut app = App::new(&app_res, &glc);
-	let md3_shader = Rc::new(RefCell::new({
+	let md3_shader = Rc::new({
 		let mut sdr = ShaderProgram::new(Arc::clone(&glc))?;
 		sdr.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)?;
 		sdr.add_shader(ShaderStage::Fragment, &app_res.md3_pixel_shader)?;
 		sdr.prepare()?;
 		sdr
-	}));
+	});
 	app.camera.aspect = {
 		let logical_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
 		logical_size.width / logical_size.height
@@ -349,7 +348,7 @@ app.models.iter_mut().for_each(|model| {
 // DRAW TAG AXES
 // ==================================================================
 
-app.tag_axes.shader.borrow().activate().unwrap();
+app.tag_axes.shader.activate().unwrap();
 if let Some(model) = app.model_data.as_ref() {
 	let current_frame = app.current_frame.floor() as usize;
 	let next_frame = app.current_frame.ceil() as usize;
@@ -378,7 +377,7 @@ if let Some(model) = app.model_data.as_ref() {
 unsafe {
 	glc.depth_func(glow::ALWAYS);
 }
-app.axes.shader.borrow().activate().unwrap();
+app.axes.shader.activate().unwrap();
 let mvp = {
 	let eye = Vec3::new(
 		app.camera.longtude.cos() * app.camera.latitude.cos(),

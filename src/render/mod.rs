@@ -7,7 +7,6 @@ use std::{
 	mem,
 	ops::{Deref, DerefMut},
 	rc::Rc,
-	cell::RefCell,
 	sync::Arc,
 	marker::PhantomData,
 };
@@ -628,7 +627,7 @@ pub struct BasicModel<I, U, L> where
 {
 	pub vertex: VertexBuffer,
 	pub index: IndexBuffer<I>,
-	pub shader: Rc<RefCell<ShaderProgram<L>>>,
+	pub shader: Rc<ShaderProgram<L>>,
 	pub uniforms: U,
 }
 
@@ -639,9 +638,9 @@ impl<I, U, L> BasicModel<I, U, L> where
 {
 	pub fn render<F>(&mut self, glc: &Context, modify_uniforms: F) -> Result<(), Box<dyn Error>>
 	where F: Fn(&mut U) -> () {
-		self.shader.borrow().activate()?;
+		self.shader.activate()?;
 		modify_uniforms(&mut self.uniforms);
-		self.uniforms.set(glc, &self.shader.borrow().locations);
+		self.uniforms.set(glc, &self.shader.locations);
 		unsafe {
 			glc.bind_vertex_array(Some(self.vertex.vao));
 			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index.ebo));

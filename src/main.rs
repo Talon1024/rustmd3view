@@ -244,7 +244,8 @@ fn main() -> Result<(), AError> {
 		logical_size.width / logical_size.height
 	};
 	let mut window_size = wc.window().inner_size().to_logical::<f32>(wc.window().scale_factor());
-	let md3_model_matrix = Mat4::from_scale(Vec3::new(1., -1., 1.));
+	let md3_model_scale = Vec3::new(1., -1., 1.);
+	let md3_model_matrix = Mat4::from_scale(md3_model_scale);
 	unsafe {
 		glc.clear_color(0., 0., 0., 1.);
 		match render::MAX_TEXTURE_UNITS.set(
@@ -364,7 +365,10 @@ if let Some(model) = app.model_data.as_ref() {
 		let tag_b = &model.tags[tag_b];
 		let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
 		let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
-		let mvp = app.camera.view_projection() * md3_model_matrix * Affine3A::from_mat3_translation(tag_axes, tag_origin) * Mat4::from_scale(Vec3::splat(app.camera.position().distance(tag_origin) / 256.));
+		let tag_distance = (app.camera.position() * md3_model_scale).distance(tag_origin) / 256.;
+		let mvp = app.camera.view_projection() * md3_model_matrix *
+			Affine3A::from_mat3_translation(tag_axes, tag_origin) *
+			Mat4::from_scale(Vec3::splat(tag_distance));
 
 		if let Err(e) = app.tag_axes.render(&glc, |uniforms| {
 			uniforms.eye = mvp;

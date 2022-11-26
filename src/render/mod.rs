@@ -157,7 +157,7 @@ impl ShaderUniforms<UniformsMD3Locations> for UniformsMD3 {
 			glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
 			glc.uniform_1_i32(locations.anim.as_ref(), texture.uniform());
 
-			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, &self.eye.to_cols_array());
+			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, self.eye.as_ref());
 
 			glc.uniform_1_f32(locations.frame.as_ref(), self.frame);
 
@@ -228,7 +228,7 @@ impl ShaderUniforms<UniformsResLocations> for UniformsRes {
 	fn set(&self, glc: &Context, locations: &UniformsResLocations) -> () {
 		let mut _texture = TextureUnit::default();
 		unsafe {
-			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, self.eye.to_cols_array().as_slice());
+			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, self.eye.as_ref());
 			glc.uniform_1_u32(locations.shaded.as_ref(), self.shaded as u32);
 		}
 	}

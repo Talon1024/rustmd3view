@@ -121,7 +121,7 @@ struct App {
 	anim_start_time: Instant,
 	anim_start_frame: f32,
 	frame_range: Option<RangeInclusive<f32>>,
-	error_message: Option<String>,
+	error_log: Option<String>,
 	models: Vec<BasicModel<u32, UniformsMD3, UniformsMD3Locations>>,
 	axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
 	tag_axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
@@ -150,7 +150,7 @@ impl App {
 			anim_start_time: Instant::now(),
 			anim_start_frame: 0.,
 			frame_range: None,
-			error_message: None,
+			error_log: None,
 			models: vec![],
 			axes: BasicModel {
 				vertex: VertexBuffer::new(Arc::clone(glc), Box::new(res::AXES_V)),
@@ -460,11 +460,11 @@ egui_glow.run(wc.window(), |ctx| {
 		}
 	});
 	let error_window = egui::Window::new("Error");
-	if let Some(message) = app.error_message.clone() {
+	if let Some(message) = app.error_log.clone() {
 		error_window.show(ctx, |ui| {
 			ui.label(message);
 			if ui.button("OK").clicked() {
-				app.error_message = None;
+				app.error_log = None;
 			}
 		});
 	}
@@ -492,7 +492,10 @@ egui_glow.run(wc.window(), |ctx| {
 				.iter().filter_map(|surf| {
 					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
 					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
-					let an = Texture::try_from_surface(Arc::clone(&glc), &surf.make_animation_surface()).map_err(|e| {app.error_message = Some(e.to_string()); e}).ok()?;
+					let an = Texture::try_from_surface(Arc::clone(&glc), &surf.make_animation_surface()).map_err(|e| {
+						let el = app.error_log.get_or_insert(String::new());
+						if !el.is_empty() { el.push('\n'); }
+						el.push_str(&e.to_string()); e}).ok()?;
 					Some(BasicModel {
 						vertex: vb,
 						index: ib,
@@ -506,15 +509,9 @@ let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get
 	.trim())))
 ).unwrap_or(Cow::from(OsString::new())));
 if let Some(e) = error {
-	match &mut app.error_message {
-		Some(ee) => {
-			ee.push('\n');
-			ee.push_str(&e.to_string());
-		},
-		None => {
-			app.error_message = Some(e.to_string());
-		},
-	}
+	let el = app.error_log.get_or_insert(String::new());
+	if !el.is_empty() { el.push('\n'); }
+	el.push_str(&e.to_string());
 }
 texture
 							},
@@ -528,7 +525,9 @@ texture
 				}).collect();
 				Ok(())
 			}) {
-				app.error_message = Some(format!("Error reading file {}:\n{}", fpath.display(), e));
+				let el = app.error_log.get_or_insert(String::new());
+				if !el.is_empty() { el.push('\n'); }
+				el.push_str(&format!("Error reading file {}:\n{}", fpath.display(), e));
 			}
 		}
 	}

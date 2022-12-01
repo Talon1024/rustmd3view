@@ -460,13 +460,18 @@ egui_glow.run(wc.window(), |ctx| {
 		}
 	});
 	let error_window = egui::Window::new("Error");
-	if let Some(message) = app.error_log.clone() {
-		error_window.show(ctx, |ui| {
-			ui.label(message);
-			if ui.button("OK").clicked() {
-				app.error_log = None;
-			}
-		});
+	{
+		let el = &mut app.error_log;
+		if el.is_some() {
+			error_window.show(ctx, |ui| {
+				egui::ScrollArea::vertical().show(ui, |ui| {
+					ui.label(el.as_ref().unwrap());
+				});
+				if ui.button("Clear").clicked() {
+					*el = None;
+				}
+			});
+		}
 	}
 	app.open_file_dialog.show(&ctx);
 	if app.open_file_dialog.selected() {

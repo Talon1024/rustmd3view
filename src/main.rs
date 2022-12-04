@@ -33,7 +33,7 @@ use render::{
 	VertexBuffer,
 	IndexBuffer,
 	Texture,
-	ShaderProgram,
+	ShaderProgramBuilder,
 	ShaderStage,
 	UniformsMD3,
 	UniformsMD3Locations,
@@ -133,10 +133,10 @@ struct App {
 impl App {
 	fn new(res: &AppResources, glc: &Arc<GLContext>) -> Self {
 		let axes_shader = {
-			let mut sp = ShaderProgram::new(Arc::clone(glc)).unwrap();
-			sp.add_shader(ShaderStage::Vertex, &res.res_vertex_shader).unwrap();
-			sp.add_shader(ShaderStage::Fragment, &res.res_pixel_shader).unwrap();
-			sp.prepare().unwrap();
+			let sp = ShaderProgramBuilder::new()
+				.add_shader(ShaderStage::Vertex, &res.res_vertex_shader)
+				.add_shader(ShaderStage::Fragment, &res.res_pixel_shader)
+				.build(Arc::clone(&glc)).unwrap();
 			Rc::new(sp)
 		};
 		App {
@@ -233,10 +233,11 @@ fn main() -> Result<(), AError> {
 	let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
 	let mut app = App::new(&app_res, &glc);
 	let md3_shader = Rc::new({
-		let mut sdr = ShaderProgram::new(Arc::clone(&glc))?;
-		sdr.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)?;
-		sdr.add_shader(ShaderStage::Fragment, &app_res.md3_pixel_shader)?;
-		sdr.prepare()?;
+		let glc = Arc::clone(&glc);
+		let sdr = ShaderProgramBuilder::new()
+			.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)
+			.add_shader(ShaderStage::Fragment, &app_res.md3_pixel_shader)
+			.build(glc)?;
 		sdr
 	});
 	app.camera.aspect = {

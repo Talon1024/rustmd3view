@@ -478,17 +478,6 @@ impl Texture {
 	}
 }
 
-#[derive(Debug)]
-pub struct ShaderProgram<L>
-where L: ShaderUniformLocations + Default {
-	glc: Arc<Context>,
-	prog: <Context as HasContext>::Program,
-	shaders: Vec<<Context as HasContext>::Shader>,
-	ready: bool,
-	// Make sure uniform structs match
-	locations: L,
-}
-
 pub enum ShaderStage {
 	Vertex,
 	Fragment,
@@ -505,61 +494,18 @@ impl From<ShaderStage> for u32 {
 	}
 }
 
+#[derive(Debug)]
+pub struct ShaderProgram<L>
+where L: ShaderUniformLocations + Default {
+	glc: Arc<Context>,
+	prog: <Context as HasContext>::Program,
+	// Make sure uniform structs match
+	locations: L,
+}
+
 impl<L> ShaderProgram<L>
 where L: ShaderUniformLocations + Default {
-	pub fn new(glc: Arc<Context>) -> Result<Self, AError> {
-		unsafe {
-			let prog = glc.create_program().map_err(AError::msg)?;
-			Ok(Self {
-				glc,
-				prog,
-				shaders: vec![],
-				ready: false,
-				locations: L::default(),
-			})
-		}
-	}
-	pub fn add_shader(&mut self, stage: ShaderStage, source: &str) -> Result<(), AError> {
-		let glc = &self.glc;
-		let stage = u32::from(stage);
-		unsafe {
-			let shader = glc.create_shader(stage).map_err(AError::msg)?;
-			glc.shader_source(shader, source);
-			glc.compile_shader(shader);
-			if !glc.get_shader_compile_status(shader) {
-				let e = Err(glc.get_shader_info_log(shader));
-				glc.delete_shader(shader);
-				return e.map_err(AError::msg);
-			}
-			self.shaders.push(shader);
-		}
-		Ok(())
-	}
-	pub fn prepare(&mut self) -> Result<(), AError> {
-		let glc = &self.glc;
-		unsafe {
-			for shader in self.shaders.iter().copied() {
-				glc.attach_shader(self.prog, shader);
-			}
-			glc.link_program(self.prog);
-			if !glc.get_program_link_status(self.prog) {
-				let e = Err(glc.get_program_info_log(self.prog));
-				glc.delete_program(self.prog);
-				return e.map_err(AError::msg);
-			}
-			for shader in self.shaders.iter().copied() {
-				glc.delete_shader(shader);
-			}
-			self.shaders.clear();
-		}
-		self.locations.setup(glc, self.prog);
-		self.ready = true;
-		Ok(())
-	}
 	pub fn activate(&self) -> Result<(), AError> {
-		if !self.ready {
-			return Err(AError::msg("Not ready"));
-		}
 		let glc = &self.glc;
 		unsafe {
 			glc.use_program(Some(self.prog));
@@ -575,11 +521,78 @@ where L: ShaderUniformLocations + Default {
 		println!("Drop ShaderProgram");
 		let glc = &self.glc;
 		unsafe {
-			for shader in self.shaders.iter().copied() {
-				glc.delete_shader(shader);
-			}
 			glc.delete_program(self.prog);
 		}
+	}
+}
+
+struct Shader<'a> {
+	stage: ShaderStage,
+	source: &'a str,
+}
+
+pub struct ShaderProgramBuilder<'a, L>
+where L: ShaderUniformLocations + Default {
+	shaders: Vec<Shader<'a>>,
+	location_type: PhantomData<L>,
+}
+
+impl<'a, L> ShaderProgramBuilder<'a, L>
+where L: ShaderUniformLocations + Default {
+	pub fn new() -> Self {
+		Self {
+			shaders: vec![],
+			location_type: PhantomData
+		}
+	}
+	pub fn add_shader(mut self, stage: ShaderStage, source: &'a str) -> Self {
+		self.shaders.push(Shader { stage, source });
+		self
+	}
+	pub fn build(self, glc: Arc<Context>) -> Result<ShaderProgram<L>, AError> {
+		let prog = unsafe { glc.create_program().map_err(AError::msg)? };
+		let mut shader_list = vec![];
+		for shader in self.shaders {
+			unsafe {
+				let shader_ = glc.create_shader(shader.stage.into()).map_err(AError::msg)?;
+				glc.shader_source(shader_, shader.source);
+				glc.compile_shader(shader_);
+				if !glc.get_shader_compile_status(shader_) {
+					let e = Err(glc.get_shader_info_log(shader_));
+					for shader in shader_list {
+						glc.delete_shader(shader);
+					}
+					glc.delete_program(prog);
+					return e.map_err(AError::msg);
+				}
+				glc.attach_shader(prog, shader_);
+				shader_list.push(shader_);
+			}
+		}
+		unsafe {
+			glc.link_program(prog);
+			if !glc.get_program_link_status(prog) {
+				let e = Err(glc.get_program_info_log(prog));
+				for shader in shader_list {
+					glc.delete_shader(shader);
+				}
+				glc.delete_program(prog);
+				return e.map_err(AError::msg);
+			}
+			for shader in shader_list {
+				glc.delete_shader(shader);
+			}
+		}
+		let locations = {
+			let mut l = L::default();
+			l.setup(&glc, prog);
+			l
+		};
+		Ok(ShaderProgram {
+			glc,
+			prog,
+			locations,
+		})
 	}
 }
 

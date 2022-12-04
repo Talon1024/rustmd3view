@@ -16,19 +16,126 @@ use once_cell::race::OnceBox;
 
 // #[macro_use]
 // mod macros;
+pub trait InterleavedVertexAttribute {
+	unsafe fn setup_vertex_attrs(glc: &Context);
+	fn stride() -> i32 where Self : Sized {
+		mem::size_of::<Self>() as i32
+	}
+}
+
+pub trait ShaderUniformLocations : Default {
+	fn setup(&mut self, glc: &Context, program: <Context as HasContext>::Program);
+}
+
+pub trait ShaderUniforms<L> where L: ShaderUniformLocations {
+	fn set(&self, glc: &Context, locations: &L) -> ();
+}
+// Brainstorming
+/* 
+// Input
+model_data!(MD3 {
+	attr index: u32,
+	attr uv: Vec2,
+	mut uniform gzdoom: bool,
+	mut uniform anim: Rc<Texture>,
+	mut uniform eye: Mat4,
+	mut uniform frame: f32,
+	mut uniform mode: u32,
+	mut uniform tex: Rc<Texture>,
+})
+ */
+/* 
+// Output
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
+pub struct MD3Vertex {
+	index: u32,
+	uv: Vec2,
+}
+
+impl InterleavedVertexAttribute for MD3Vertex {
+	unsafe fn setup_vertex_attrs(glc: &Context) {
+		let mut attrib_index = 0;
+		let mut offset = 0;
+		let stride = Self::stride();
+
+		glc.vertex_attrib_pointer_i32(attrib_index, 1, glow::UNSIGNED_INT,
+			stride, offset);
+		glc.enable_vertex_attrib_array(attrib_index);
+		offset += mem::size_of::<u32>() as i32;
+		attrib_index += 1;
+
+		glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false,
+			stride, offset);
+		glc.enable_vertex_attrib_array(attrib_index);
+		// offset += mem::size_of::<Vec2>() as i32;
+		// attrib_index += 1;
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct MD3Uniforms {
+	pub gzdoom: bool,
+	pub anim: Rc<Texture>,
+	pub eye: Mat4,
+	pub frame: f32,
+	pub mode: u32,
+	pub tex: Rc<Texture>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct MD3UniformLocations {
+	gzdoom: Option<NativeUniformLocation>,
+	anim: Option<NativeUniformLocation>,
+	eye: Option<NativeUniformLocation>,
+	frame: Option<NativeUniformLocation>,
+	mode: Option<NativeUniformLocation>,
+	tex: Option<NativeUniformLocation>,
+}
+
+impl ShaderUniformLocations for MD3UniformLocations {
+	fn setup(&mut self, glc: &Context, program: <Context as HasContext>::Program) {
+		unsafe {
+			self.gzdoom = glc.get_uniform_location(program, "gzdoom");
+			self.anim = glc.get_uniform_location(program, "anim");
+			self.eye = glc.get_uniform_location(program, "eye");
+			self.frame = glc.get_uniform_location(program, "frame");
+			self.mode = glc.get_uniform_location(program, "mode");
+			self.tex = glc.get_uniform_location(program, "tex");
+		}
+	}
+}
+
+impl ShaderUniforms<MD3UniformLocations> for MD3Uniforms {
+	fn set(&self, glc: &Context, locations: &MD3UniformLocations) -> () {
+		let mut texture = TextureUnit::default();
+		unsafe {
+			glc.uniform_1_u32(locations.gzdoom.as_ref(), self.gzdoom as u32);
+
+			glc.active_texture(texture.slot());
+			glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
+			glc.uniform_1_i32(locations.anim.as_ref(), texture.uniform());
+
+			glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, self.eye.as_ref());
+
+			glc.uniform_1_f32(locations.frame.as_ref(), self.frame);
+
+			glc.uniform_1_u32(locations.mode.as_ref(), self.mode);
+
+			texture.next();
+			glc.active_texture(texture.slot());
+			glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
+			glc.uniform_1_i32(locations.tex.as_ref(), texture.uniform());
+		}
+	}
+}
+ */
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
 pub struct VertexMD3 {
 	index: u32,
 	uv: Vec2,
-}
-
-pub trait InterleavedVertexAttribute {
-	unsafe fn setup_vertex_attrs(glc: &Context);
-	fn stride() -> i32 where Self : Sized {
-		mem::size_of::<Self>() as i32
-	}
 }
 
 impl InterleavedVertexAttribute for VertexMD3 {
@@ -50,68 +157,6 @@ impl InterleavedVertexAttribute for VertexMD3 {
 		// attrib_index += 1;
 	}
 }
-
-pub trait ShaderUniformLocations : Default {
-	fn setup(&mut self, glc: &Context, program: <Context as HasContext>::Program);
-}
-
-pub trait ShaderUniforms<L> where L: ShaderUniformLocations {
-	fn set(&self, glc: &Context, locations: &L) -> ();
-}
-// Brainstorming
-/* 
-// Input
-pub struct UniformsMD3 {
-	pub gzdoom: bool,
-	pub anim: Rc<Texture>,
-	pub eye: Mat4,
-	pub frame: f32,
-	pub mode: u32,
-	pub tex: Rc<Texture>,
-}
- */
-/* 
-// Output
-pub struct UniformsMD3 {
-	pub gzdoom: bool,
-	gzdoom_l_: Option<NativeUniformLocation>,
-	pub anim: Rc<Texture>,
-	anim_l_: Option<NativeUniformLocation>,
-	pub eye: Mat4,
-	eye_l_: Option<NativeUniformLocation>,
-	pub frame: f32,
-	frame_l_: Option<NativeUniformLocation>,
-	pub mode: u32,
-	mode_l_: Option<NativeUniformLocation>,
-	pub tex: Rc<Texture>,
-	tex_l_: Option<NativeUniformLocation>,
-}
-
-impl ShaderUniforms for UniformsMD3 {
-	fn set(&self, glc: &Context) {
-		let mut texture = TextureUnit(0);
-		unsafe {
-			glc.uniform_1_u32(self.gzdoom_l_.as_ref(), self.gzdoom as u32);
-
-			*texture += 1;
-			glc.active_texture(texture.slot());
-			glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
-			glc.uniform_1_i32(self.anim_l_.as_ref(), texture.uniform());
-
-			glc.uniform_matrix_4_f32_slice(self.eye_l_.as_ref(), false, &self.eye.to_cols_array());
-
-			glc.uniform_1_f32(self.frame_l_.as_ref(), self.frame);
-
-			glc.uniform_1_u32(self.mode_l_.as_ref(), self.mode);
-
-			*texture += 1;
-			glc.active_texture(texture.slot());
-			glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
-			glc.uniform_1_i32(self.tex_l_.as_ref(), texture.uniform());
-		}
-	}
-}
- */
 
 // TODO: Macro-ize!
 #[derive(Debug, Clone)]

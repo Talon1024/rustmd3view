@@ -233,11 +233,10 @@ fn main() -> Result<(), AError> {
 	let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
 	let mut app = App::new(&app_res, &glc);
 	let md3_shader = Rc::new({
-		let glc = Arc::clone(&glc);
 		let sdr = ShaderProgramBuilder::new()
 			.add_shader(ShaderStage::Vertex, &app_res.md3_vertex_shader)
 			.add_shader(ShaderStage::Fragment, &app_res.md3_pixel_shader)
-			.build(glc)?;
+			.build(Arc::clone(&glc))?;
 		sdr
 	});
 	app.camera.aspect = {

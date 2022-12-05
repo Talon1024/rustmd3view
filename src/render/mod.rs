@@ -554,19 +554,19 @@ where L: ShaderUniformLocations + Default {
 		let mut shader_list = vec![];
 		for shader in self.shaders {
 			unsafe {
-				let shader_ = glc.create_shader(shader.stage.into()).map_err(AError::msg)?;
-				glc.shader_source(shader_, shader.source);
-				glc.compile_shader(shader_);
-				if !glc.get_shader_compile_status(shader_) {
-					let e = Err(glc.get_shader_info_log(shader_));
+				let gl_shader = glc.create_shader(shader.stage.into()).map_err(AError::msg)?;
+				glc.shader_source(gl_shader, shader.source);
+				glc.compile_shader(gl_shader);
+				if !glc.get_shader_compile_status(gl_shader) {
+					let e = Err(glc.get_shader_info_log(gl_shader));
 					for shader in shader_list {
 						glc.delete_shader(shader);
 					}
 					glc.delete_program(prog);
 					return e.map_err(AError::msg);
 				}
-				glc.attach_shader(prog, shader_);
-				shader_list.push(shader_);
+				glc.attach_shader(prog, gl_shader);
+				shader_list.push(gl_shader);
 			}
 		}
 		unsafe {
@@ -579,6 +579,9 @@ where L: ShaderUniformLocations + Default {
 				glc.delete_program(prog);
 				return e.map_err(AError::msg);
 			}
+			// The shaders are compiled, and the program is linked. The
+			// shaders are not needed any more, since they are unlikely
+			// to be re-used.
 			for shader in shader_list {
 				glc.delete_shader(shader);
 			}

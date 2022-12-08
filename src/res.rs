@@ -14,7 +14,6 @@ use bytemuck::Pod;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum SurfaceType {
-	Animation,
 	#[default]
 	U8RGBA,
 	U8RGB,
@@ -24,10 +23,9 @@ pub enum SurfaceType {
 	F32RGBA,
 }
 
-impl SurfaceType {
+/* impl SurfaceType {
 	pub fn channels(&self) -> u8 {
 		match self {
-			SurfaceType::Animation => 4,
 			SurfaceType::U8RGBA => 4,
 			SurfaceType::U8RGB => 3,
 			SurfaceType::U16RGB => 3,
@@ -36,7 +34,7 @@ impl SurfaceType {
 			SurfaceType::F32RGBA => 4,
 		}
 	}
-}
+} */
 
 #[derive(Debug, Clone, Default)]
 pub struct Surface {

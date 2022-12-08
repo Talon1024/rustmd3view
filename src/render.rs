@@ -37,11 +37,11 @@ model_data!(MD3 {
 	attr index: u32,
 	attr uv: Vec2,
 	mut uniform gzdoom: bool,
-	mut uniform anim: Rc<Texture>,
+	uniform anim: Rc<Texture>,
 	mut uniform eye: Mat4,
 	mut uniform frame: f32,
 	mut uniform mode: u32,
-	mut uniform tex: Rc<Texture>,
+	uniform tex: Rc<Texture>,
 })
  */
 /* 
@@ -428,7 +428,6 @@ impl Texture {
 			glc.bind_texture(glow::TEXTURE_2D, Some(texture));
 			// NOTE: 16-bit images are untested!
 			let tex_iformat: i32 = match tex.texture_type {
-				SurfaceType::Animation => glow::RGBA32I,
 				SurfaceType::U8RGBA => glow::RGBA32F,
 				SurfaceType::U8RGB => glow::RGB32F,
 				SurfaceType::U16RGB => glow::RGB32F,
@@ -437,7 +436,6 @@ impl Texture {
 				SurfaceType::F32RGBA => glow::RGBA32F,
 			}.try_into().unwrap();
 			let tex_format = match tex.texture_type {
-				SurfaceType::Animation => glow::RGBA_INTEGER,
 				SurfaceType::U8RGBA => glow::RGBA,
 				SurfaceType::U8RGB => glow::RGB,
 				SurfaceType::U16RGB => glow::RGB16UI,
@@ -446,7 +444,6 @@ impl Texture {
 				SurfaceType::F32RGBA => glow::RGBA32F,
 			};
 			let data_type = match tex.texture_type {
-				SurfaceType::Animation => glow::INT,
 				SurfaceType::U8RGBA => glow::UNSIGNED_BYTE,
 				SurfaceType::U8RGB => glow::UNSIGNED_BYTE,
 				SurfaceType::U16RGB => glow::UNSIGNED_SHORT,
@@ -454,10 +451,8 @@ impl Texture {
 				SurfaceType::F32RGB => glow::FLOAT,
 				SurfaceType::F32RGBA => glow::FLOAT,
 			};
-			let (min_filter, mag_filter) = match tex.texture_type {
-				SurfaceType::Animation => (glow::NEAREST as i32, glow::NEAREST as i32),
-				_ => (glow::LINEAR as i32, glow::LINEAR as i32),
-			};
+			let min_filter = glow::LINEAR as i32;
+			let mag_filter = glow::LINEAR as i32;
 			glc.tex_image_2d(glow::TEXTURE_2D, 0, tex_iformat,
 				tex.width as i32, tex.height as i32, 0, tex_format,
 				data_type, Some(&tex.data));
@@ -472,6 +467,75 @@ impl Texture {
 				glc,
 			})
 		}
+	}
+	pub fn try_from_md3(glc: Arc<Context>, surf: &MD3Surface) -> Result<Self, AError> {
+		// Animations may need some additional processing
+		enum UploadError {
+			GLError(AError),
+			TooBig,
+		}
+		impl From<AError> for UploadError {
+			fn from(v: AError) -> Self {
+				UploadError::GLError(v)
+			}
+		}
+		fn try_upload(glc: &Context, width: i32, height: i32, data: &[u8]) -> Result<<Context as HasContext>::Texture, UploadError> {
+			let internal_format = glow::RGBA32I as i32;
+			let tex_format = glow::RGBA_INTEGER;
+			let data_type = glow::INT;
+			let target = glow::TEXTURE_2D;
+			unsafe {
+				let texture = glc.create_texture().map_err(AError::msg)?;
+				glc.bind_texture(target, Some(texture));
+				glc.tex_image_2d(target, 0, internal_format, width, height, 0, tex_format, data_type, Some(data));
+				match gl_get_error(&glc) {
+					Ok(_) => Ok(texture),
+					Err(_) => {
+						glc.delete_texture(texture);
+						Err(UploadError::TooBig)
+					},
+				}
+			}
+		}
+		let mut width = surf.num_verts as i32;
+		let mut two_power = (1..MAX_TEXTURE_POT.get().copied().unwrap()).rev().filter(|&i| {
+			2i32.pow(i) < width
+		}).next().unwrap_or(0);
+		let tex_handle = loop {
+			let an = surf.make_animation(Some(width as usize));
+			let height = (an.rows_per_frame * an.frames) as i32;
+			match try_upload(&glc, width, height, &an.data) {
+				Ok(tex) => {
+					break Ok(Texture {
+						glc: Arc::clone(&glc),
+						tex,
+					});
+				},
+				Err(e) => {
+					match e {
+						UploadError::GLError(e) => break Err(e),
+						UploadError::TooBig => {
+							if two_power > 0 {
+								width = 2i32.pow(two_power);
+								two_power -= 1;
+							} else {
+								break Err(AError::msg("Animation is too big to upload to the GPU!"));
+							}
+						},
+					}
+				},
+			}
+		}?;
+		let wrapping = glow::REPEAT as i32;
+		let filter = glow::NEAREST as i32;
+		let target = glow::TEXTURE_2D;
+		unsafe {
+			glc.tex_parameter_i32(target, glow::TEXTURE_WRAP_S, wrapping);
+			glc.tex_parameter_i32(target, glow::TEXTURE_WRAP_T, wrapping);
+			glc.tex_parameter_i32(target, glow::TEXTURE_MIN_FILTER, filter);
+			glc.tex_parameter_i32(target, glow::TEXTURE_MAG_FILTER, filter);
+		}
+		Ok(tex_handle)
 	}
 	pub fn tex(&self) -> <Context as HasContext>::Texture {
 		self.tex
@@ -600,6 +664,7 @@ where L: ShaderUniformLocations + Default {
 }
 
 pub static MAX_TEXTURE_UNITS: OnceBox<u8> = OnceBox::new();
+pub static MAX_TEXTURE_POT: OnceBox<u32> = OnceBox::new();
 
 #[derive(Debug, Clone, Copy)]
 pub struct TextureUnit(pub u8);

@@ -1,7 +1,6 @@
 use glam::f32::{Vec2, Vec3, Mat3};
 use std::io::{Read, Seek, SeekFrom};
 use thiserror::Error;
-use crate::res::{Surface, SurfaceType};
 
 pub const MD3_ID: [u8; 4] = *b"IDP3";
 pub const MD3_VERSION: i32 = 15;
@@ -51,21 +50,38 @@ pub struct MD3Surface {
 	pub vertices: Vec<MD3FrameVertex>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Animation {
+	pub vertices: u32,
+	pub frames: u32,
+	pub rows_per_frame: u32,
+	pub data: Box<[u8]>,
+}
+
 impl MD3Surface {
-	pub fn make_animation_surface(&self) -> Surface {
-		let width = self.num_verts;
-		let height = self.num_frames;
-		let tex_type = SurfaceType::Animation;
-		let channels = tex_type.channels() as usize;
+	pub fn make_animation(&self, width: Option<usize>) -> Animation {
+		let vertices = self.num_verts;
+		let frames = self.num_frames;
+		let width = width.unwrap_or(vertices);
+		let rows_per_frame = (vertices as f32 / width as f32).ceil() as usize;
+		let maximum_verts_per_frame = width * rows_per_frame;
+		let height = frames * rows_per_frame;
+		let channels = 4usize;
 		let mut data = vec![0i32; width * height * channels];
-		data.chunks_exact_mut(channels).enumerate().for_each(|(i, px)| {
-			px.copy_from_slice(&self.vertices[i].to_pixel());
+		data.chunks_exact_mut(channels).enumerate().filter_map(|(oi, px)| {
+			let i = oi % maximum_verts_per_frame;
+			let m = oi / maximum_verts_per_frame;
+			if i < vertices {
+				Some((m * vertices + i, px))
+			} else {
+				None
+			}
+		}).for_each(|(i, px)| {
+			px.copy_from_slice(&self.vertices[i as usize].to_pixel());
 		});
-		Surface {
-			width: width as u32,
-			height: height as u32,
-			texture_type: tex_type,
-			// data: Box::from(data),
+		Animation {
+			vertices: vertices as u32, frames: frames as u32,
+			rows_per_frame: rows_per_frame as u32,
 			// INEFFICIENT AS FUCK!! But safe and consistent across platforms.
 			data: data.iter().copied().flat_map(i32::to_ne_bytes).collect()
 		}

@@ -256,6 +256,17 @@ fn main() -> Result<(), AError> {
 				render::MAX_TEXTURE_UNITS.get().copied().unwrap()),
 			Err(e) => println!("{}", e),
 		}
+		match render::MAX_TEXTURE_POT.set({
+			let max_texture_size = glc.get_parameter_i32(glow::MAX_TEXTURE_SIZE);
+			let max_texture_pot = (max_texture_size as f32).log2().floor()
+				.to_int_unchecked();
+			Box::new(max_texture_pot)
+			}
+		).map_err(|_| format!("Maximum texture size already set!")) {
+			Ok(_) => println!("Maximum texture size: {}",
+				2i32.pow(render::MAX_TEXTURE_POT.get().copied().unwrap())),
+			Err(e) => println!("{}", e),
+		}
 	}
 	el.run(move |event, _window, control_flow| {
 		match event {
@@ -464,7 +475,7 @@ egui_glow.run(wc.window(), |ctx| {
 		let el = &mut app.error_log;
 		if el.is_some() {
 			error_window.show(ctx, |ui| {
-				egui::ScrollArea::vertical().show(ui, |ui| {
+				egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
 					ui.label(el.as_ref().unwrap());
 				});
 				if ui.button("Clear").clicked() {
@@ -497,7 +508,7 @@ egui_glow.run(wc.window(), |ctx| {
 				.iter().filter_map(|surf| {
 					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
 					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
-					let an = Texture::try_from_surface(Arc::clone(&glc), &surf.make_animation_surface()).map_err(|e| {
+					let an = Texture::try_from_md3(Arc::clone(&glc), &surf).map_err(|e| {
 						let el = app.error_log.get_or_insert(String::new());
 						if !el.is_empty() { el.push('\n'); }
 						el.push_str(&e.to_string()); e}).ok()?;

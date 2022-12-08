@@ -3,6 +3,7 @@
 uniform bool gzdoom;
 uniform isampler2D anim;
 uniform mat4 eye;
+uniform int rowsPerFrame;
 uniform float frame; // interpolated
 layout(location=0) in uint aIndex;
 layout(location=1) in vec2 aUv;
@@ -42,15 +43,25 @@ vec3[2] toPosNorm(ivec4 raw) {
 	return vec3[2](xyz, normal);
 }
 
+ivec2 indexToVertexLoc(uint index, int width, int frame) {
+	int col = int(index) % width;
+	int row = int(index) / width + frame * rowsPerFrame;
+	return ivec2(col, row);
+}
+
 void main() {
+	int animWidth = textureSize(anim, 0).x;
 	float interp = fract(frame);
 	// Which frames to use?
 	int framea = int(floor(frame));
 	int frameb = int(ceil(frame));
-	// Vertex positions and normals are stored in an RGB integer texture, with
-	// the vertex (by index) on the X axis, and the frame on the Y axis.
-	ivec2 uva = ivec2(aIndex, framea);
-	ivec2 uvb = ivec2(aIndex, frameb);
+	// Vertex positions and normals are stored in an RGBA integer texture, with
+	// the vertices (by index) on rectangles within the texture. The frames are
+	// rectangles, stacked vertically, containing the vertex position data as
+	// RGBA colours, which are converted into positions and normals by the
+	// toPosNorm function
+	ivec2 uva = indexToVertexLoc(aIndex, animWidth, framea);
+	ivec2 uvb = indexToVertexLoc(aIndex, animWidth, frameb);
 	ivec4 ia = texelFetch(anim, uva, 0);
 	ivec4 ib = texelFetch(anim, uvb, 0);
 	vec3[2] va = toPosNorm(ia);

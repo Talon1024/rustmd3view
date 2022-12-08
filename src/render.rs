@@ -159,6 +159,7 @@ impl InterleavedVertexAttribute for VertexMD3 {
 }
 
 // TODO: Macro-ize!
+#[allow(non_snake_case)]
 #[derive(Debug, Clone)]
 pub struct UniformsMD3 {
 	pub gzdoom: bool,
@@ -167,8 +168,10 @@ pub struct UniformsMD3 {
 	pub frame: f32,
 	pub mode: u32,
 	pub tex: Rc<Texture>,
+	pub rowsPerFrame: i32,
 }
 
+#[allow(non_snake_case)]
 #[derive(Debug, Clone, Default)]
 pub struct UniformsMD3Locations {
 	gzdoom: Option<NativeUniformLocation>,
@@ -177,6 +180,7 @@ pub struct UniformsMD3Locations {
 	frame: Option<NativeUniformLocation>,
 	mode: Option<NativeUniformLocation>,
 	tex: Option<NativeUniformLocation>,
+	rowsPerFrame: Option<NativeUniformLocation>,
 }
 
 impl ShaderUniformLocations for UniformsMD3Locations {
@@ -188,6 +192,7 @@ impl ShaderUniformLocations for UniformsMD3Locations {
 			self.frame = glc.get_uniform_location(program, "frame");
 			self.mode = glc.get_uniform_location(program, "mode");
 			self.tex = glc.get_uniform_location(program, "tex");
+			self.rowsPerFrame = glc.get_uniform_location(program, "rowsPerFrame");
 		}
 	}
 }
@@ -212,6 +217,8 @@ impl ShaderUniforms<UniformsMD3Locations> for UniformsMD3 {
 			glc.active_texture(texture.slot());
 			glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
 			glc.uniform_1_i32(locations.tex.as_ref(), texture.uniform());
+
+			glc.uniform_1_i32(locations.rowsPerFrame.as_ref(), self.rowsPerFrame);
 		}
 	}
 }
@@ -468,7 +475,7 @@ impl Texture {
 			})
 		}
 	}
-	pub fn try_from_md3(glc: Arc<Context>, surf: &MD3Surface) -> Result<Self, AError> {
+	pub fn try_from_md3(glc: Arc<Context>, surf: &MD3Surface) -> Result<(Self, u32), AError> {
 		// Animations may need some additional processing
 		enum UploadError {
 			GLError(AError),
@@ -501,8 +508,10 @@ impl Texture {
 		let mut two_power = (1..MAX_TEXTURE_POT.get().copied().unwrap()).rev().filter(|&i| {
 			2i32.pow(i) < width
 		}).next().unwrap_or(0);
+		let mut rows_per_frame;
 		let tex_handle = loop {
 			let an = surf.make_animation(Some(width as usize));
+			rows_per_frame = an.rows_per_frame;
 			let height = (an.rows_per_frame * an.frames) as i32;
 			match try_upload(&glc, width, height, &an.data) {
 				Ok(tex) => {
@@ -535,7 +544,7 @@ impl Texture {
 			glc.tex_parameter_i32(target, glow::TEXTURE_MIN_FILTER, filter);
 			glc.tex_parameter_i32(target, glow::TEXTURE_MAG_FILTER, filter);
 		}
-		Ok(tex_handle)
+		Ok((tex_handle, rows_per_frame))
 	}
 	pub fn tex(&self) -> <Context as HasContext>::Texture {
 		self.tex

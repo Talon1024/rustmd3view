@@ -508,7 +508,7 @@ egui_glow.run(wc.window(), |ctx| {
 				.iter().filter_map(|surf| {
 					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
 					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
-					let an = Texture::try_from_md3(Arc::clone(&glc), &surf).map_err(|e| {
+					let (an, rows_per_frame) = Texture::try_from_md3(Arc::clone(&glc), &surf).map_err(|e| {
 						let el = app.error_log.get_or_insert(String::new());
 						if !el.is_empty() { el.push('\n'); }
 						el.push_str(&e.to_string()); e}).ok()?;
@@ -536,6 +536,7 @@ texture
 							eye: Default::default(),
 							frame: Default::default(),
 							mode: Default::default(),
+							rowsPerFrame: rows_per_frame as i32,
 						}
 					})
 				}).collect();

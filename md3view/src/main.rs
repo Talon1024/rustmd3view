@@ -17,6 +17,7 @@ use res::{AppResources, Surface};
 use std::{
 	borrow::Cow,
 	collections::HashMap,
+	env,
 	f32::consts::FRAC_PI_2,
 	ffi::OsString,
 	fs::File,
@@ -226,7 +227,7 @@ const LOOK_LIMIT: f32 = {
 };
 
 fn main() -> Result<(), AError> {
-	let app_res = AppResources::try_load(None)
+	let app_res = AppResources::try_load(env::var("ASSETS_PATH").ok())
 		.context("Failed to load app resources!")?;
 	let el = EventLoopBuilder::new().build();
 	let (wc, glc) = window::create_window(&el, None);

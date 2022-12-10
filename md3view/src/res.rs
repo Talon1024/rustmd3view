@@ -89,7 +89,7 @@ pub struct AppResources {
 }
 
 impl AppResources {
-	pub fn try_load(path: Option<&dyn AsRef<Path>>) -> Result<Box<AppResources>, Error> {
+	pub fn try_load(path: Option<impl AsRef<Path>>) -> Result<Box<AppResources>, Error> {
 		let path = match path {
 			Some(ref p) => Cow::from(p.as_ref()),
 			None => {

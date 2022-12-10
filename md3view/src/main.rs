@@ -26,7 +26,7 @@ use std::{
 	rc::Rc,
 	time::Instant,
 };
-use anyhow::Error as AError;
+use anyhow::{Error as AError, Context as AContext};
 use md3::MD3Model;
 use render::{
 	BasicModel,
@@ -226,7 +226,8 @@ const LOOK_LIMIT: f32 = {
 };
 
 fn main() -> Result<(), AError> {
-	let app_res = AppResources::try_load(None)?;
+	let app_res = AppResources::try_load(None)
+		.context("Failed to load app resources!")?;
 	let el = EventLoopBuilder::new().build();
 	let (wc, glc) = window::create_window(&el, None);
 	let glc = Arc::new(glc);

@@ -493,8 +493,6 @@ egui_glow.run(wc.window(), |ctx| {
 				.map_err(AError::from).and_then(|mut f| {
 				md3::read_md3(&mut f).map_err(AError::from)
 			}).and_then(|model| {
-				#[cfg(feature = "log_successful_load")]
-				println!("Model {} loaded successfully!", fpath.display());
 				let num_frames = model.frames.len();
 				app.frame_range = if num_frames > 1 {
 					Some(0.0..=(num_frames - 1) as f32)

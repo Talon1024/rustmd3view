@@ -69,19 +69,30 @@ impl MD3Surface {
 		let height = frames * rows_per_frame;
 		// 4 "colour channels" * size_of(i32) bytes
 		let channels = 4usize * std::mem::size_of::<i32>();
-		let data = (0..frames).into_par_iter().flat_map(|frame| {
-			let start = frame * pixels_per_frame;
-			let end = start + pixels_per_frame;
-			(start..end).into_iter().flat_map(|vindex| {
+		let data = if frames > 1 {
+			(0..frames).into_par_iter().flat_map(|frame| {
+				let start = frame * pixels_per_frame;
+				let end = start + pixels_per_frame;
+				(start..end).into_iter().flat_map(|vindex| {
+					let vindex = vindex % pixels_per_frame;
+					if vindex < vertices {
+						let vindex = frame * vertices + vindex;
+						self.vertices[vindex].to_pixel().map(i32::to_ne_bytes)
+					} else {
+						[[0; 4]; 4]
+					}
+				}).flatten().collect::<Vec<u8>>()
+			}).collect::<Vec<u8>>().into_boxed_slice()
+		} else {
+			(0..pixels_per_frame).into_par_iter().flat_map(|vindex| {
 				let vindex = vindex % pixels_per_frame;
 				if vindex < vertices {
-					let vindex = frame * vertices + vindex;
 					self.vertices[vindex].to_pixel().map(i32::to_ne_bytes)
 				} else {
 					[[0; 4]; 4]
 				}
-			}).flatten().collect::<Vec<u8>>()
-		}).collect::<Vec<u8>>().into_boxed_slice();
+			}).flatten().collect::<Vec<u8>>().into_boxed_slice()
+		};
 		assert_eq!(data.len(), width * height * channels);
 		Animation {
 			vertices: vertices as u32, frames: frames as u32,

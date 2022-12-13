@@ -1,6 +1,7 @@
 use glam::f32::{Vec2, Vec3, Mat3};
 use std::io::{Read, Seek, SeekFrom};
 use thiserror::Error;
+use rayon::prelude::*;
 
 pub const MD3_ID: [u8; 4] = *b"IDP3";
 pub const MD3_VERSION: i32 = 15;
@@ -64,26 +65,28 @@ impl MD3Surface {
 		let frames = self.num_frames;
 		let width = width.unwrap_or(vertices);
 		let rows_per_frame = (vertices as f32 / width as f32).ceil() as usize;
-		let maximum_verts_per_frame = width * rows_per_frame;
+		let pixels_per_frame = width * rows_per_frame;
 		let height = frames * rows_per_frame;
-		let channels = 4usize;
-		let mut data = vec![0i32; width * height * channels];
-		data.chunks_exact_mut(channels).enumerate().filter_map(|(oi, px)| {
-			let i = oi % maximum_verts_per_frame;
-			let m = oi / maximum_verts_per_frame;
-			if i < vertices {
-				Some((m * vertices + i, px))
-			} else {
-				None
-			}
-		}).for_each(|(i, px)| {
-			px.copy_from_slice(&self.vertices[i as usize].to_pixel());
-		});
+		// 4 "colour channels" * size_of(i32) bytes
+		let channels = 4usize * std::mem::size_of::<i32>();
+		let data = (0..frames).into_par_iter().flat_map(|frame| {
+			let start = frame * pixels_per_frame;
+			let end = start + pixels_per_frame;
+			(start..end).into_iter().flat_map(|vindex| {
+				let vindex = vindex % pixels_per_frame;
+				if vindex < vertices {
+					let vindex = frame * vertices + vindex;
+					self.vertices[vindex].to_pixel().map(i32::to_ne_bytes)
+				} else {
+					[[0; 4]; 4]
+				}
+			}).flatten().collect::<Vec<u8>>()
+		}).collect::<Vec<u8>>().into_boxed_slice();
+		assert_eq!(data.len(), width * height * channels);
 		Animation {
 			vertices: vertices as u32, frames: frames as u32,
 			rows_per_frame: rows_per_frame as u32,
-			// INEFFICIENT AS FUCK!! But safe and consistent across platforms.
-			data: data.iter().copied().flat_map(i32::to_ne_bytes).collect()
+			data
 		}
 	}
 }

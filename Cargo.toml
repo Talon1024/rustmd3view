@@ -1,2 +1,2 @@
 [workspace]
-members = ["md3view"]
+members = ["md3view", "gl-macros"]

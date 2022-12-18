@@ -11,7 +11,7 @@ use std::{
 	marker::PhantomData,
 };
 use bytemuck::{Pod, Zeroable};
-use crate::err_util::gl_get_error;
+use crate::err_util::GLError;
 use once_cell::race::OnceBox;
 
 // #[macro_use]
@@ -463,7 +463,7 @@ impl Texture {
 			glc.tex_image_2d(glow::TEXTURE_2D, 0, tex_iformat,
 				tex.width as i32, tex.height as i32, 0, tex_format,
 				data_type, Some(&tex.data));
-			gl_get_error(&glc)?;
+			GLError::get(&glc)?;
 			glc.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::REPEAT as i32);
 			glc.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::REPEAT as i32);
 			glc.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, min_filter);
@@ -478,13 +478,9 @@ impl Texture {
 	pub fn try_from_md3(glc: Arc<Context>, surf: &MD3Surface) -> Result<(Self, u32), AError> {
 		// Animations may need some additional processing
 		enum UploadError {
-			GLError(AError),
+			GLError(GLError),
+			Message(String),
 			TooBig,
-		}
-		impl From<AError> for UploadError {
-			fn from(v: AError) -> Self {
-				UploadError::GLError(v)
-			}
 		}
 		fn try_upload(glc: &Context, width: i32, height: i32, data: &[u8]) -> Result<<Context as HasContext>::Texture, UploadError> {
 			let internal_format = glow::RGBA32I as i32;
@@ -492,14 +488,17 @@ impl Texture {
 			let data_type = glow::INT;
 			let target = glow::TEXTURE_2D;
 			unsafe {
-				let texture = glc.create_texture().map_err(AError::msg)?;
+				let texture = glc.create_texture().map_err(UploadError::Message)?;
 				glc.bind_texture(target, Some(texture));
 				glc.tex_image_2d(target, 0, internal_format, width, height, 0, tex_format, data_type, Some(data));
-				match gl_get_error(&glc) {
+				match GLError::get(&glc) {
 					Ok(_) => Ok(texture),
-					Err(_) => {
+					Err(err) => {
 						glc.delete_texture(texture);
-						Err(UploadError::TooBig)
+						match err {
+							GLError::InvalidValue => Err(UploadError::TooBig),
+							e => Err(UploadError::GLError(e)),
+						}
 					},
 				}
 			}
@@ -522,7 +521,8 @@ impl Texture {
 				},
 				Err(e) => {
 					match e {
-						UploadError::GLError(e) => break Err(e),
+						UploadError::GLError(e) => break Err(AError::from(e)),
+						UploadError::Message(m) => break Err(AError::msg(m)),
 						UploadError::TooBig => {
 							if two_power > 0 {
 								width = 2i32.pow(two_power);
@@ -780,7 +780,7 @@ impl<I, U, L> BasicModel<I, U, L> where
 			glc.bind_vertex_array(Some(self.vertex.vao));
 			glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.index.ebo));
 			glc.draw_elements(glow::TRIANGLES, self.index.size, I::GL_TYPE, 0);
-			gl_get_error(glc)?;
+			GLError::get(glc)?;
 		}
 		Ok(())
 	}

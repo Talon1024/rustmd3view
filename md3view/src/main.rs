@@ -472,16 +472,16 @@ egui_glow.run(wc.window(), |ctx| {
 			None => ()
 		}
 	});
-	let error_window = egui::Window::new("Error");
+	let error_window = egui::Window::new("Error")
+		.default_height(200.).vscroll(true);
 	{
 		let el = &mut app.error_log;
 		if el.is_some() {
 			error_window.show(ctx, |ui| {
-				egui::ScrollArea::vertical().max_height(200.).show(ui, |ui| {
-					ui.label(el.as_ref().unwrap());
-				});
 				if ui.button("Clear").clicked() {
 					*el = None;
+				} else {
+					ui.label(el.as_ref().unwrap());
 				}
 			});
 		}

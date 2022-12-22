@@ -1,5 +1,7 @@
 use glam::f32::{Vec2, Vec3, Mat3};
 use std::io::{Read, Seek, SeekFrom};
+use std::iter;
+use rayon::iter as riter;
 use thiserror::Error;
 use rayon::prelude::*;
 
@@ -71,9 +73,17 @@ impl MD3Surface {
 		let channels = 4usize * std::mem::size_of::<i32>();
 		let data = if frames > 1 {
 			(0..frames).into_par_iter().flat_map(|frame| {
+				let start = frame * vertices;
+				let end = start + vertices;
+				let by_slice = self.vertices[start..end].iter()
+					.map(|vert| vert.to_pixel().map(i32::to_ne_bytes))
+					.chain(iter::repeat([[0; 4]; 4])).take(pixels_per_frame)
+					.flatten().flatten().collect::<Vec<u8>>();
+				#[cfg(feature = "make_animation_is_bugged")]
+				{
 				let start = frame * pixels_per_frame;
 				let end = start + pixels_per_frame;
-				(start..end).into_iter().flat_map(|vindex| {
+				let by_index = (start..end).into_iter().flat_map(|vindex| {
 					let vindex = vindex % pixels_per_frame;
 					if vindex < vertices {
 						let vindex = frame * vertices + vindex;
@@ -81,17 +91,32 @@ impl MD3Surface {
 					} else {
 						[[0; 4]; 4]
 					}
-				}).flatten().collect::<Vec<u8>>()
+				}).flatten().collect::<Vec<u8>>();
+				assert_eq!(by_slice.len(), by_index.len());
+				assert_eq!(by_slice, by_index);
+				}
+				by_slice
 			}).collect::<Vec<u8>>().into_boxed_slice()
 		} else {
-			(0..pixels_per_frame).into_par_iter().flat_map(|vindex| {
+			let extra_count = pixels_per_frame - self.vertices.len();
+			let by_slice = self.vertices.par_iter()
+				.map(|vert| vert.to_pixel().map(i32::to_ne_bytes))
+				.chain(riter::repeatn([[0; 4]; 4], extra_count))
+				.flatten().flatten().collect::<Vec<u8>>().into_boxed_slice();
+			#[cfg(feature = "make_animation_is_bugged")]
+			{
+			let by_index = (0..pixels_per_frame).into_par_iter().flat_map(|vindex| {
 				let vindex = vindex % pixels_per_frame;
 				if vindex < vertices {
 					self.vertices[vindex].to_pixel().map(i32::to_ne_bytes)
 				} else {
 					[[0; 4]; 4]
 				}
-			}).flatten().collect::<Vec<u8>>().into_boxed_slice()
+			}).flatten().collect::<Vec<u8>>().into_boxed_slice();
+			assert_eq!(by_slice.len(), by_index.len());
+			assert_eq!(by_slice, by_index);
+			}
+			by_slice
 		};
 		assert_eq!(data.len(), width * height * channels);
 		Animation {

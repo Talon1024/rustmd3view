@@ -24,3 +24,4 @@ rayon = "1.6.1"
 default = []
 extra_logging = ["log_drop_gl_resources"]
 log_drop_gl_resources = []
+make_animation_is_bugged = []

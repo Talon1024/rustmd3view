@@ -67,7 +67,8 @@ void main() {
 	vec3[2] va = toPosNorm(ia);
 	vec3[2] vb = toPosNorm(ib);
 	position = mix(va[0], vb[0], interp);
-	// Thanks to https://en.wikibooks.org/wiki/GLSL_Programming/Applying_Matrix_Transformations#Transforming_Directions for "pointing me in the right direction" 😉😉
+	// Thanks to this article for "pointing me in the right direction" 😉😉
+	// https://en.wikibooks.org/wiki/GLSL_Programming/Applying_Matrix_Transformations#Transforming_Directions
 	eyeNormal = (eye * vec4(mix(va[1], vb[1], interp), 0.)).xyz;
 	eyeNormal.z = -eyeNormal.z;
 	uv = aUv;

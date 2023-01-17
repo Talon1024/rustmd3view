@@ -1,31 +1,81 @@
-use glow::{Context as GLContext};
+use glow::Context as GLContext;
 use glutin::{
-	event_loop::EventLoop,
-	window::{Window, WindowBuilder},
-	ContextBuilder,
-	ContextWrapper,
-	PossiblyCurrent,
-	GlProfile,
-	GlRequest,
-	Api
+    config::{Api, ConfigTemplateBuilder},
+    context::{
+        ContextApi, ContextAttributesBuilder, GlProfile,
+        NotCurrentGlContextSurfaceAccessor, Robustness, Version,
+    },
+    display::{GetGlDisplay, GlDisplay},
+    surface::{GlSurface, Surface, SurfaceAttributesBuilder, WindowSurface},
+};
+use glutin_winit::{ApiPrefence, DisplayBuilder};
+use raw_window_handle::HasRawWindowHandle;
+use std::{ffi::CStr, num::NonZeroU32};
+use winit::{
+    event_loop::EventLoop,
+    window::{Window, WindowBuilder},
 };
 
-type WindowContext = ContextWrapper<PossiblyCurrent, Window>;
+pub(crate) struct AppWindow {
+    pub win: Window,
+    pub wc: <Surface<WindowSurface> as GlSurface<WindowSurface>>::Context,
+    pub glc: GLContext,
+    pub surf: Surface<WindowSurface>,
+}
 
-pub fn create_window<T>(el: &EventLoop<T>, title: Option<&str>) -> (WindowContext, GLContext) {
-	let wb = WindowBuilder::new().with_title(title.unwrap_or("A fantastic window!"));
+pub(crate) fn create_window<CE>(
+    el: &EventLoop<CE>,
+    title: Option<&str>,
+) -> AppWindow {
+    let ctb = ConfigTemplateBuilder::new()
+        .with_api(Api::all())
+        .prefer_hardware_accelerated(Some(true));
+    let wb = WindowBuilder::new().with_title(title.unwrap_or("rustmd3view"));
+    let (win, cfg) = DisplayBuilder::new()
+        .with_window_builder(Some(wb))
+        .with_preference(ApiPrefence::PreferEgl)
+        .build(el, ctb, |mut c| {
+            c.next()
+                .expect("Could not find an appropriate configuration")
+        })
+        .expect("Could not build the display");
+    let win = win.expect("No window was created!");
 
-	let wc = ContextBuilder::new()
-		.with_gl_profile(GlProfile::Core)
-		.with_gl(GlRequest::Specific(Api::OpenGl, (3, 3)))
-		.build_windowed(wb, &el).unwrap();
+    let ca = ContextAttributesBuilder::new()
+        .with_context_api(ContextApi::OpenGl(Some(Version {
+            major: 3,
+            minor: 3,
+        })))
+        .with_profile(GlProfile::Core)
+        .with_robustness(if cfg!(debug_assertions) {
+            Robustness::RobustNoResetNotification
+        } else {
+            Robustness::NoError
+        })
+        .build(None);
 
-	let wc = unsafe { wc.make_current().unwrap() };
+    let sa = SurfaceAttributesBuilder::<WindowSurface>::new()
+        .with_srgb(None)
+        .build(
+            win.raw_window_handle(),
+            unsafe { NonZeroU32::new_unchecked(800) },
+            unsafe { NonZeroU32::new_unchecked(600) },
+        );
 
-	let glc = unsafe {
-		GLContext::from_loader_function(
-			|name| wc.get_proc_address(name))
-	};
+    let dsp = cfg.display();
+    let wc = unsafe { dsp.create_context(&cfg, &ca) }
+        .expect("Could not create context");
+    let surf = unsafe { dsp.create_window_surface(&cfg, &sa) }
+        .expect("Could not create surface on window");
+    let wc = wc
+        .make_current(&surf)
+        .expect("Could not make context current");
+    let glc = unsafe {
+        GLContext::from_loader_function(|name| {
+            let name = CStr::from_ptr(name.as_ptr() as *const i8);
+            dsp.get_proc_address(name)
+        })
+    };
 
-	(wc, glc)
+    AppWindow { win, glc, wc, surf }
 }

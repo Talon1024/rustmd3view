@@ -10,17 +10,27 @@ use glutin::{
 };
 use glutin_winit::{ApiPrefence, DisplayBuilder};
 use raw_window_handle::HasRawWindowHandle;
-use std::{ffi::CStr, num::NonZeroU32};
+use std::{ffi::CStr, num::NonZeroU32, sync::Arc};
 use winit::{
     event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
 
+pub(crate) struct WindowContext {
+    wc: <Surface<WindowSurface> as GlSurface<WindowSurface>>::Context,
+    surf: Surface<WindowSurface>,
+}
+
+impl WindowContext {
+    pub fn swap_buffers(&self) -> Result<(), glutin::error::Error> {
+        self.surf.swap_buffers(&self.wc)
+    }
+}
+
 pub(crate) struct AppWindow {
     pub win: Window,
-    pub wc: <Surface<WindowSurface> as GlSurface<WindowSurface>>::Context,
-    pub glc: GLContext,
-    pub surf: Surface<WindowSurface>,
+    pub glc: Arc<GLContext>,
+    pub wc: WindowContext,
 }
 
 pub(crate) fn create_window<CE>(
@@ -70,12 +80,13 @@ pub(crate) fn create_window<CE>(
     let wc = wc
         .make_current(&surf)
         .expect("Could not make context current");
-    let glc = unsafe {
+    let glc = Arc::new(unsafe {
         GLContext::from_loader_function(|name| {
             let name = CStr::from_ptr(name.as_ptr() as *const i8);
             dsp.get_proc_address(name)
         })
-    };
+    });
+    let wc = WindowContext { wc, surf };
 
-    AppWindow { win, glc, wc, surf }
+    AppWindow { win, glc, wc }
 }

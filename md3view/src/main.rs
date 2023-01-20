@@ -12,7 +12,6 @@ use egui::{Color32, Id, LayerId, Order, Pos2, TextStyle};
 use eye::{Camera, OrbitCamera};
 use glam::{Affine3A, Mat4, Vec3};
 use glow::{Context as GLContext, HasContext};
-use glutin::surface::GlSurface;
 use md3::MD3Model;
 use render::{
     BasicModel, IndexBuffer, ShaderProgramBuilder, ShaderStage, Texture,
@@ -298,8 +297,7 @@ fn main() -> Result<(), AError> {
     let app_res = AppResources::try_load(env::var("ASSETS_PATH").ok())
         .context("Failed to load app resources!")?;
     let el = EventLoopBuilder::new().build();
-    let AppWindow { win, glc, wc, surf } = window::create_window(&el, None);
-    let glc = Arc::new(glc);
+    let AppWindow { glc, wc, win } = window::create_window(&el, None);
     let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
     let mut app = App::new(&app_res, &glc);
     let md3_shader = Rc::new({
@@ -732,7 +730,7 @@ texture
                 egui_glow.paint(&win);
                 // SWAP BUFFERS
                 // ==================================================================
-                if let Err(e) = surf.swap_buffers(&wc) {
+                if let Err(e) = wc.swap_buffers() {
                     eprintln!("{:?}", e);
                 }
             }

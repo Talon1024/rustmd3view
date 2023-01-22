@@ -429,10 +429,7 @@ impl VertexBuffer {
             .texcoords
             .iter()
             .enumerate()
-            .map(|(index, uv)| VertexMD3 {
-                index: index as u32,
-                uv: uv.0,
-            })
+            .map(|(index, uv)| VertexMD3 { index: index as u32, uv: uv.0 })
             .collect();
         VertexBuffer::new(glc, buf.into_boxed_slice())
     }
@@ -492,12 +489,7 @@ where
             ebo
         };
         let size = buf.len() as i32;
-        Self {
-            glc,
-            ebo,
-            size,
-            itype: PhantomData,
-        }
+        Self { glc, ebo, size, itype: PhantomData }
     }
 }
 
@@ -672,10 +664,7 @@ impl Texture {
             let height = (an.rows_per_frame * an.frames) as i32;
             match try_upload(&glc, width, height, &an.data) {
                 Ok(tex) => {
-                    break Ok(Texture {
-                        glc: Arc::clone(&glc),
-                        tex,
-                    });
+                    break Ok(Texture { glc: Arc::clone(&glc), tex });
                 }
                 Err(e) => {
                     match e {
@@ -781,10 +770,7 @@ where
     L: ShaderUniformLocations + Default,
 {
     pub fn new() -> Self {
-        Self {
-            shaders: vec![],
-            location_type: PhantomData,
-        }
+        Self { shaders: vec![], location_type: PhantomData }
     }
     pub fn add_shader(mut self, stage: ShaderStage, source: &'a str) -> Self {
         self.shaders.push(Shader { stage, source });
@@ -834,11 +820,7 @@ where
             l.setup(&glc, prog);
             l
         };
-        Ok(ShaderProgram {
-            glc,
-            prog,
-            locations,
-        })
+        Ok(ShaderProgram { glc, prog, locations })
     }
 }
 

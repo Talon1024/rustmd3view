@@ -12,6 +12,7 @@ use glutin_winit::{ApiPrefence, DisplayBuilder};
 use raw_window_handle::HasRawWindowHandle;
 use std::{ffi::CStr, num::NonZeroU32, sync::Arc};
 use winit::{
+    dpi::PhysicalSize,
     event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
@@ -27,6 +28,9 @@ impl WindowContext {
     }
 }
 
+const INITIAL_WINSIZE: PhysicalSize<u32> =
+    PhysicalSize { width: 800, height: 600 };
+
 pub(crate) struct AppWindow {
     pub win: Window,
     pub glc: Arc<GLContext>,
@@ -40,13 +44,25 @@ pub(crate) fn create_window<CE>(
     let ctb = ConfigTemplateBuilder::new()
         .with_api(Api::all())
         .prefer_hardware_accelerated(Some(true));
-    let wb = WindowBuilder::new().with_title(title.unwrap_or("rustmd3view"));
+    let wb = WindowBuilder::new()
+        .with_inner_size(INITIAL_WINSIZE)
+        .with_title(title.unwrap_or("rustmd3view"));
     let (win, cfg) = DisplayBuilder::new()
         .with_window_builder(Some(wb))
         .with_preference(ApiPrefence::PreferEgl)
         .build(el, ctb, |mut c| {
-            c.next()
-                .expect("Could not find an appropriate configuration")
+            /* #[cfg(debug_assertions)]
+            {
+                let first = c.next().expect("Could not find an appropriate configuration");
+                dbg!(&first);
+                c.for_each(|conf| {dbg!(&conf);});
+                first
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                c.next().expect("Could not find an appropriate configuration")
+            } */
+            c.next().expect("Could not find an appropriate configuration")
         })
         .expect("Could not build the display");
     let win = win.expect("No window was created!");
@@ -64,12 +80,11 @@ pub(crate) fn create_window<CE>(
         })
         .build(None);
 
-    let sa = SurfaceAttributesBuilder::<WindowSurface>::new()
-        .with_srgb(None)
-        .build(
+    let sa =
+        SurfaceAttributesBuilder::<WindowSurface>::new().with_srgb(None).build(
             win.raw_window_handle(),
-            unsafe { NonZeroU32::new_unchecked(800) },
-            unsafe { NonZeroU32::new_unchecked(600) },
+            unsafe { NonZeroU32::new_unchecked(INITIAL_WINSIZE.width) },
+            unsafe { NonZeroU32::new_unchecked(INITIAL_WINSIZE.height) },
         );
 
     let dsp = cfg.display();
@@ -77,9 +92,7 @@ pub(crate) fn create_window<CE>(
         .expect("Could not create context");
     let surf = unsafe { dsp.create_window_surface(&cfg, &sa) }
         .expect("Could not create surface on window");
-    let wc = wc
-        .make_current(&surf)
-        .expect("Could not make context current");
+    let wc = wc.make_current(&surf).expect("Could not make context current");
     let glc = Arc::new(unsafe {
         GLContext::from_loader_function(|name| {
             let name = CStr::from_ptr(name.as_ptr() as *const i8);

@@ -105,12 +105,9 @@ impl TextureCache {
             .cloned()
             .filter(|f| f != NULL_TEXTURE_NAME)
             .collect();
-        non_null_textures
-            .into_iter()
-            .map(String::as_str)
-            .for_each(|k| {
-                self.cache.remove(k);
-            });
+        non_null_textures.into_iter().map(String::as_str).for_each(|k| {
+            self.cache.remove(k);
+        });
     }
 }
 

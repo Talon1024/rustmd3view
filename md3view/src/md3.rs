@@ -22,11 +22,7 @@ pub struct MD3Model {
 
 impl MD3Model {
     pub fn max_radius(&self) -> f32 {
-        self.frames
-            .iter()
-            .map(|f| f.radius)
-            .reduce(f32::max)
-            .unwrap_or(0.)
+        self.frames.iter().map(|f| f.radius).reduce(f32::max).unwrap_or(0.)
     }
 }
 
@@ -302,11 +298,8 @@ fn read_frame(data: &mut (impl Read + Seek)) -> MD3Result<MD3Frame> {
 
 fn read_tag(data: &mut (impl Read + Seek)) -> MD3Result<MD3FrameTag> {
     use MD3ReadError::*;
-    let mut tag = MD3FrameTag {
-        name: [0; 64],
-        origin: Vec3::ZERO,
-        axes: Mat3::ZERO,
-    };
+    let mut tag =
+        MD3FrameTag { name: [0; 64], origin: Vec3::ZERO, axes: Mat3::ZERO };
     let mut int_buf = [0; 4];
     data.read_exact(&mut tag.name).or(Err(EOF))?;
     data.read_exact(&mut int_buf).or(Err(EOF))?;
@@ -407,10 +400,7 @@ fn read_surface(data: &mut (impl Read + Seek)) -> MD3Result<MD3Surface> {
 
 fn read_shader(data: &mut (impl Read + Seek)) -> MD3Result<MD3Shader> {
     use MD3ReadError::*;
-    let mut shader = MD3Shader {
-        name: [0; 64],
-        index: 0,
-    };
+    let mut shader = MD3Shader { name: [0; 64], index: 0 };
     let mut int_buf = [0; 4];
     data.read_exact(&mut shader.name).or(Err(EOF))?;
     data.read_exact(&mut int_buf).or(Err(EOF))?;
@@ -452,12 +442,7 @@ fn read_texcoord(data: &mut (impl Read + Seek)) -> MD3Result<MD3TexCoord> {
 fn read_vertex(data: &mut (impl Read + Seek)) -> MD3Result<MD3FrameVertex> {
     use MD3ReadError::*;
     let mut short_buf = [0; 2];
-    let mut vertex = MD3FrameVertex {
-        x: 0,
-        y: 0,
-        z: 0,
-        n: 0,
-    };
+    let mut vertex = MD3FrameVertex { x: 0, y: 0, z: 0, n: 0 };
     data.read_exact(&mut short_buf).or(Err(EOF))?;
     vertex.x = i16::from_le_bytes(short_buf);
     data.read_exact(&mut short_buf).or(Err(EOF))?;

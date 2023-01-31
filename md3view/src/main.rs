@@ -19,6 +19,7 @@ use render::{
     VertexBuffer,
 };
 use res::{AppResources, Surface};
+use rfd::FileDialog;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -36,9 +37,6 @@ use str_util::StringFromBytes;
 use window::AppWindow;
 use winit::event::Event;
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
-
-use egui_file::FileDialog;
-
 struct TextureCache {
     cache: HashMap<String, Rc<Texture>, RandomState>,
 }
@@ -156,10 +154,9 @@ impl App {
             Rc::new(sp)
         };
         App {
-            open_file_dialog: FileDialog::open_file(None)
-                .show_rename(false)
-                .show_new_folder(false)
-                .filter(String::from("md3")),
+            open_file_dialog: FileDialog::new()
+                .set_title("Open MD3 model")
+                .add_filter("MD3", &["md3"]),
             model_data: None,
             current_frame: 0.,
             anim_playing: false,
@@ -212,7 +209,7 @@ const LOOK_LIMIT: f32 = {
     Shell (zsh) code used to generate this mess:
     (bits=32
     for bit in {0..$((bits-1))}; do
-        print -v hxb -f "%0$((bits/4))X" $((1 << bit))
+        print -v hxb -f "0x%0$((bits/4))X" $((1 << bit))
         if ((bit > 0)); then
             print -n "else "
         fi
@@ -220,70 +217,70 @@ const LOOK_LIMIT: f32 = {
     done
     print "else { 0 };")
      */
-    let lowest_bit = if v & 00000001 != 0 {
-        00000001
-    } else if v & 00000002 != 0 {
-        00000002
-    } else if v & 00000004 != 0 {
-        00000004
-    } else if v & 00000008 != 0 {
-        00000008
-    } else if v & 00000010 != 0 {
-        00000010
-    } else if v & 00000020 != 0 {
-        00000020
-    } else if v & 00000040 != 0 {
-        00000040
-    } else if v & 00000080 != 0 {
-        00000080
-    } else if v & 00000100 != 0 {
-        00000100
-    } else if v & 00000200 != 0 {
-        00000200
-    } else if v & 00000400 != 0 {
-        00000400
-    } else if v & 00000800 != 0 {
-        00000800
-    } else if v & 00001000 != 0 {
-        00001000
-    } else if v & 00002000 != 0 {
-        00002000
-    } else if v & 00004000 != 0 {
-        00004000
-    } else if v & 00008000 != 0 {
-        00008000
-    } else if v & 00010000 != 0 {
-        00010000
-    } else if v & 00020000 != 0 {
-        00020000
-    } else if v & 00040000 != 0 {
-        00040000
-    } else if v & 00080000 != 0 {
-        00080000
-    } else if v & 00100000 != 0 {
-        00100000
-    } else if v & 00200000 != 0 {
-        00200000
-    } else if v & 00400000 != 0 {
-        00400000
-    } else if v & 00800000 != 0 {
-        00800000
-    } else if v & 01000000 != 0 {
-        01000000
-    } else if v & 02000000 != 0 {
-        02000000
-    } else if v & 04000000 != 0 {
-        04000000
-    } else if v & 08000000 != 0 {
-        08000000
-    } else if v & 10000000 != 0 {
-        10000000
-    } else if v & 20000000 != 0 {
-        20000000
-    } else if v & 40000000 != 0 {
-        40000000
-    } else if v & 80000000 != 0 {
-        80000000
+    let lowest_bit = if v & 0x00000001 != 0 {
+        0x00000001
+    } else if v & 0x00000002 != 0 {
+        0x00000002
+    } else if v & 0x00000004 != 0 {
+        0x00000004
+    } else if v & 0x00000008 != 0 {
+        0x00000008
+    } else if v & 0x00000010 != 0 {
+        0x00000010
+    } else if v & 0x00000020 != 0 {
+        0x00000020
+    } else if v & 0x00000040 != 0 {
+        0x00000040
+    } else if v & 0x00000080 != 0 {
+        0x00000080
+    } else if v & 0x00000100 != 0 {
+        0x00000100
+    } else if v & 0x00000200 != 0 {
+        0x00000200
+    } else if v & 0x00000400 != 0 {
+        0x00000400
+    } else if v & 0x00000800 != 0 {
+        0x00000800
+    } else if v & 0x00001000 != 0 {
+        0x00001000
+    } else if v & 0x00002000 != 0 {
+        0x00002000
+    } else if v & 0x00004000 != 0 {
+        0x00004000
+    } else if v & 0x00008000 != 0 {
+        0x00008000
+    } else if v & 0x00010000 != 0 {
+        0x00010000
+    } else if v & 0x00020000 != 0 {
+        0x00020000
+    } else if v & 0x00040000 != 0 {
+        0x00040000
+    } else if v & 0x00080000 != 0 {
+        0x00080000
+    } else if v & 0x00100000 != 0 {
+        0x00100000
+    } else if v & 0x00200000 != 0 {
+        0x00200000
+    } else if v & 0x00400000 != 0 {
+        0x00400000
+    } else if v & 0x00800000 != 0 {
+        0x00800000
+    } else if v & 0x01000000 != 0 {
+        0x01000000
+    } else if v & 0x02000000 != 0 {
+        0x02000000
+    } else if v & 0x04000000 != 0 {
+        0x04000000
+    } else if v & 0x08000000 != 0 {
+        0x08000000
+    } else if v & 0x10000000 != 0 {
+        0x10000000
+    } else if v & 0x20000000 != 0 {
+        0x20000000
+    } else if v & 0x40000000 != 0 {
+        0x40000000
+    } else if v & 0x80000000 != 0 {
+        0x80000000
     } else {
         0
     };
@@ -509,7 +506,72 @@ fn main() -> Result<(), AError> {
                         egui::menu::bar(ui, |ui| {
                             ui.menu_button("File", |ui| {
                                 if ui.button("Open").clicked() {
-                                    app.open_file_dialog.open();
+if let Some(fpath) = app.open_file_dialog.clone().pick_file() {
+if let Err(e) = File::open(&fpath)
+    .map_err(AError::from)
+    .and_then(|mut f| md3::read_md3(&mut f).map_err(AError::from))
+    .and_then(|model| {
+let num_frames = model.frames.len();
+app.frame_range = if num_frames > 1 {
+    Some(0.0..=(num_frames - 1) as f32)
+} else {
+    None
+};
+app.texture_cache.clear();
+app.anim_playing = false;
+app.current_frame = 0.;
+app.model_data = Some(Box::new(model));
+app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
+app.models = app.model_data.as_ref().unwrap().surfaces
+    .iter().filter_map(|surf| {
+        let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
+        let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
+    let (an, rows_per_frame) = Texture::try_from_md3(Arc::clone(&glc), &surf).map_err(|e| {
+        let el = app.error_log.get_or_insert(String::new());
+        if !el.is_empty() { el.push('\n'); }
+        el.push_str(&e.to_string()); e}).ok()?;
+    Some(BasicModel {
+        vertex: vb,
+        index: ib,
+        shader: Rc::clone(&md3_shader),
+        uniforms: UniformsMD3 {
+            tex: {
+                let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
+                    Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
+                    String::from_utf8_stop(&s.name)
+                    .trim_matches(|c| c == char::from_u32(0).unwrap())
+                    .trim())))
+                ).unwrap_or(Cow::from(OsString::new())));
+                if let Some(e) = error {
+                    let el = app.error_log.get_or_insert(String::new());
+                    if !el.is_empty() { el.push('\n'); }
+                    el.push_str(&e.to_string());
+                }
+                texture
+            },
+            anim: Rc::new(an),
+            gzdoom: Default::default(),
+            eye: Default::default(),
+            frame: Default::default(),
+            mode: Default::default(),
+            rowsPerFrame: rows_per_frame as i32,
+        }
+    })
+}).collect();
+Ok(())
+})
+{
+let el = app.error_log.get_or_insert(String::new());
+if !el.is_empty() {
+el.push('\n');
+}
+el.push_str(&format!(
+"Error reading file {}:\n{}",
+fpath.display(),
+e
+));
+}
+}
                                     ui.close_menu();
                                 }
                                 if ui.button("Quit").clicked() {
@@ -603,76 +665,6 @@ fn main() -> Result<(), AError> {
                             });
                         }
                     }
-                    app.open_file_dialog.show(&ctx);
-                    if app.open_file_dialog.selected() {
-                        if let Some(fpath) = app.open_file_dialog.path() {
-                            if let Err(e) = File::open(&fpath)
-                                .map_err(AError::from)
-                                .and_then(|mut f| md3::read_md3(&mut f).map_err(AError::from))
-                                .and_then(|model| {
-                                    let num_frames = model.frames.len();
-                                    app.frame_range = if num_frames > 1 {
-                                        Some(0.0..=(num_frames - 1) as f32)
-                                    } else {
-                                        None
-                                    };
-                                    app.texture_cache.clear();
-                                    app.anim_playing = false;
-                                    app.current_frame = 0.;
-                                    app.model_data = Some(Box::new(model));
-                                    app.camera.distance =
-                                        app.model_data.as_ref().unwrap().max_radius() * 2.;
-                                    app.models = app.model_data.as_ref().unwrap().surfaces
-				.iter().filter_map(|surf| {
-					let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
-					let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
-					let (an, rows_per_frame) = Texture::try_from_md3(Arc::clone(&glc), &surf).map_err(|e| {
-						let el = app.error_log.get_or_insert(String::new());
-						if !el.is_empty() { el.push('\n'); }
-						el.push_str(&e.to_string()); e}).ok()?;
-					Some(BasicModel {
-						vertex: vb,
-						index: ib,
-						shader: Rc::clone(&md3_shader),
-						uniforms: UniformsMD3 {
-							tex: {
-let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
-	Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
-	String::from_utf8_stop(&s.name)
-	.trim_matches(|c| c == char::from_u32(0).unwrap())
-	.trim())))
-).unwrap_or(Cow::from(OsString::new())));
-if let Some(e) = error {
-	let el = app.error_log.get_or_insert(String::new());
-	if !el.is_empty() { el.push('\n'); }
-	el.push_str(&e.to_string());
-}
-texture
-							},
-							anim: Rc::new(an),
-							gzdoom: Default::default(),
-							eye: Default::default(),
-							frame: Default::default(),
-							mode: Default::default(),
-							rowsPerFrame: rows_per_frame as i32,
-						}
-					})
-				}).collect();
-                                    Ok(())
-                                })
-                            {
-                                let el = app.error_log.get_or_insert(String::new());
-                                if !el.is_empty() {
-                                    el.push('\n');
-                                }
-                                el.push_str(&format!(
-                                    "Error reading file {}:\n{}",
-                                    fpath.display(),
-                                    e
-                                ));
-                            }
-                        }
-                    }
                     egui::SidePanel::right("infoz").show(ctx, |ui| {
                         ui.heading("Shaders");
                         if let Some(model) = app.model_data.as_ref() {
@@ -690,38 +682,36 @@ texture
                     });
                     // DRAW TAG NAMES AT TAG POSITIONS
                     // ==================================================================
-                    if !app.open_file_dialog.visible() {
-                        let painter = ctx.layer_painter(LayerId {
-                            order: Order::Foreground,
-                            id: Id::new("tag_name_overlays"),
+                    let painter = ctx.layer_painter(LayerId {
+                        order: Order::Foreground,
+                        id: Id::new("tag_name_overlays"),
+                    });
+                    if let Some(model) = app.model_data.as_ref() {
+                        let current_frame = app.current_frame.floor() as usize;
+                        let next_frame = app.current_frame.ceil() as usize;
+                        let lerp_factor = app.current_frame.fract();
+                        let num_tags = model.num_tags;
+                        (0..num_tags).for_each(|tag_index| {
+                            let tag_a = tag_index + num_tags * current_frame;
+                            let tag_b = tag_index + num_tags * next_frame;
+                            let tag_a = &model.tags[tag_a];
+                            let tag_b = &model.tags[tag_b];
+                            let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
+                            let tag_name = String::from_utf8_stop(&tag_a.name).to_string();
+                            let font =
+                                egui::style::default_text_styles()[&TextStyle::Small].clone();
+                            let galley = painter.layout_no_wrap(tag_name, font, Color32::WHITE);
+                            let pos = {
+                                let pos = (app.camera.view_projection() * md3_model_matrix)
+                                    .project_point3(tag_origin);
+                                let Vec3 { x, y, .. } = pos;
+                                let x = x.mul_add(0.5, 0.5) * window_size.width;
+                                // In OpenGL NDC, +y is up and -y is down
+                                let y = (-y).mul_add(0.5, 0.5) * window_size.height;
+                                Pos2 { x, y }
+                            };
+                            painter.galley(pos, galley);
                         });
-                        if let Some(model) = app.model_data.as_ref() {
-                            let current_frame = app.current_frame.floor() as usize;
-                            let next_frame = app.current_frame.ceil() as usize;
-                            let lerp_factor = app.current_frame.fract();
-                            let num_tags = model.num_tags;
-                            (0..num_tags).for_each(|tag_index| {
-                                let tag_a = tag_index + num_tags * current_frame;
-                                let tag_b = tag_index + num_tags * next_frame;
-                                let tag_a = &model.tags[tag_a];
-                                let tag_b = &model.tags[tag_b];
-                                let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
-                                let tag_name = String::from_utf8_stop(&tag_a.name).to_string();
-                                let font =
-                                    egui::style::default_text_styles()[&TextStyle::Small].clone();
-                                let galley = painter.layout_no_wrap(tag_name, font, Color32::WHITE);
-                                let pos = {
-                                    let pos = (app.camera.view_projection() * md3_model_matrix)
-                                        .project_point3(tag_origin);
-                                    let Vec3 { x, y, .. } = pos;
-                                    let x = x.mul_add(0.5, 0.5) * window_size.width;
-                                    // In OpenGL NDC, +y is up and -y is down
-                                    let y = (-y).mul_add(0.5, 0.5) * window_size.height;
-                                    Pos2 { x, y }
-                                };
-                                painter.galley(pos, galley);
-                            });
-                        }
                     }
                 });
                 egui_glow.paint(&win);

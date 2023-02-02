@@ -559,17 +559,15 @@ app.models = app.model_data.as_ref().unwrap().surfaces
     })
 }).collect();
 Ok(())
-})
-{
-let el = app.error_log.get_or_insert(String::new());
-if !el.is_empty() {
-el.push('\n');
-}
-el.push_str(&format!(
-"Error reading file {}:\n{}",
-fpath.display(),
-e
-));
+}) {
+    let el = app.error_log.get_or_insert(String::new());
+    if !el.is_empty() {
+        el.push('\n');
+    }
+    el.push_str(&format!(
+        "Error reading file {}:\n{}",
+        fpath.display(), e
+    ));
 }
 }
                                     ui.close_menu();

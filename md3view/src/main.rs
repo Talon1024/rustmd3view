@@ -293,7 +293,7 @@ fn main() -> Result<(), AError> {
         .context("Failed to load app resources!")?;
     let el = EventLoopBuilder::new().build();
     let AppWindow { glc, wc, win } = window::create_window(&el, None);
-    let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc));
+    let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc), None);
     let mut app = App::new(&app_res, &glc);
     let md3_shader = Rc::new({
         let sdr = ShaderProgramBuilder::new()
@@ -354,7 +354,8 @@ fn main() -> Result<(), AError> {
                 event,
             } => {
                 use winit::event::{ElementState, MouseButton, WindowEvent::*};
-                if egui_glow.on_event(&event) {
+                let egui_response = egui_glow.on_event(&event);
+                if egui_response.consumed {
                     return ();
                 }
                 match event {

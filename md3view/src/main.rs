@@ -31,12 +31,13 @@ use std::{
     path::Path,
     rc::Rc,
     sync::Arc,
-    time::Instant,
 };
 use str_util::StringFromBytes;
 use window::AppWindow;
 use winit::event::Event;
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
+use instant::Instant;
+
 struct TextureCache {
     cache: HashMap<String, Rc<Texture>, RandomState>,
 }

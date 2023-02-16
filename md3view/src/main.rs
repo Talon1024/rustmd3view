@@ -64,7 +64,7 @@ impl TextureCache {
         if let Some(r) = self.cache.get(key.as_ref()) {
             return (Rc::clone(r), None);
         }
-        match Surface::read_image(path) {
+        match Surface::read_image_file(path) {
             Ok(s) => {
                 let texture = Texture::try_from_surface(glc, &s);
                 match texture {
@@ -672,9 +672,17 @@ Ok(())
                                 egui::CollapsingHeader::new(format!("Surface {}", index)).show(
                                     ui,
                                     |ui| {
-                                        surf.shaders.iter().for_each(|sdr| {
-                                            ui.label(String::from_utf8_stop(&sdr.name));
+                                        surf.shaders.iter()
+                                        .enumerate()
+                                        .for_each(|(index, sdr)| {
+                                            ui.horizontal(|ui| {
+                                                ui.label(format!("{index}."));
+                                                ui.label(String::from_utf8_stop(&sdr.name));
+                                            });
                                         });
+                                        if ui.button("Replace texture").clicked() {
+                                            // Need surface index and new texture
+                                        }
                                     },
                                 );
                             });

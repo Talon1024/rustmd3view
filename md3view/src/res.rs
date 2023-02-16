@@ -7,7 +7,7 @@ use std::{
     borrow::Cow,
     env,
     fs::{self, File},
-    io::BufReader,
+    io::{Read, Seek, BufReader},
     ops::Deref,
     path::Path,
 };
@@ -45,10 +45,15 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn read_image(path: impl AsRef<Path>) -> Result<Surface, Error> {
+    pub fn read_image_file(path: impl AsRef<Path>) -> Result<Surface, Error> {
+        let file_reader = File::open(path)?;
+        Self::read_image_data(file_reader)
+    }
+    pub fn read_image_data(image_data: impl Read + Seek) -> Result<Surface, Error> {
         use SurfaceType::*;
-        let file_reader = BufReader::new(File::open(path)?);
-        let image = Reader::new(file_reader).with_guessed_format()?.decode()?;
+        let reader = BufReader::new(image_data);
+        let image = Reader::new(reader).with_guessed_format()?.decode()?;
+
         fn to_surface<P: Pixel, T>(
             buf: ImageBuffer<P, T>,
             fmt: SurfaceType,
@@ -66,6 +71,7 @@ impl Surface {
                 data: bytemuck::cast_slice(&buf.into_raw()).into(),
             }
         }
+
         match image {
             ImageLuma8(_i) => Err(Error::msg("Unsupported format: ImageLuma8")),
             ImageLumaA8(_i) => {
@@ -108,7 +114,7 @@ impl AppResources {
                 Cow::from(pwd)
             }
         };
-        let null_texture = Surface::read_image(path.join("null.png"))?;
+        let null_texture = Surface::read_image_file(path.join("null.png"))?;
         let md3_vertex_shader = fs::read_to_string(path.join("md3.vert"))?;
         let md3_pixel_shader = fs::read_to_string(path.join("md3.frag"))?;
         let res_vertex_shader = fs::read_to_string(path.join("res.vert"))?;

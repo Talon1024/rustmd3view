@@ -1,6 +1,7 @@
 mod err_util;
 mod eye;
 mod md3;
+mod platform;
 mod render;
 mod res;
 mod str_util;
@@ -12,6 +13,7 @@ use egui::{Color32, Id, LayerId, Order, Pos2, TextStyle};
 use eye::{Camera, OrbitCamera};
 use glam::{Affine3A, Mat4, Vec3};
 use glow::{Context as GLContext, HasContext};
+use instant::Instant;
 use md3::MD3Model;
 use render::{
     BasicModel, IndexBuffer, ShaderProgramBuilder, ShaderStage, Texture,
@@ -19,7 +21,7 @@ use render::{
     VertexBuffer,
 };
 use res::{AppResources, Surface};
-use rfd::FileDialog;
+use rfd::{AsyncFileDialog, FileDialog};
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -27,6 +29,7 @@ use std::{
     f32::consts::FRAC_PI_2,
     ffi::OsString,
     fs::File,
+    io::Cursor,
     ops::{Add, Bound, Mul, RangeBounds, RangeInclusive},
     path::Path,
     rc::Rc,
@@ -36,7 +39,6 @@ use str_util::StringFromBytes;
 use window::AppWindow;
 use winit::event::Event;
 use winit::event_loop::{ControlFlow, EventLoopBuilder};
-use instant::Instant;
 
 struct TextureCache {
     cache: HashMap<String, Rc<Texture>, RandomState>,
@@ -95,6 +97,22 @@ impl TextureCache {
                     e
                 ))),
             ),
+        }
+    }
+    fn set(
+        &mut self,
+        glc: Arc<GLContext>,
+        name: String,
+        data: Surface,
+    ) -> Result<Rc<Texture>, AError> {
+        match Texture::try_from_surface(glc, &data) {
+            Ok(t) => {
+                let txref = Rc::new(t);
+                let myref = Rc::clone(&txref);
+                self.cache.insert(name, txref);
+                Ok(myref)
+            }
+            Err(e) => Err(e),
         }
     }
     fn clear(&mut self) {
@@ -288,10 +306,20 @@ const LOOK_LIMIT: f32 = {
     unsafe { mem::transmute::<u32, f32>(v ^ lowest_bit) }
 };
 
+const BLANK_SURFACE_SHADER_NAME: &str = "_____blank_____";
+
+#[derive(Debug)]
+enum AppEvent {
+    LoadMD3,
+    LoadTextureReplacement { name: String, image: Surface },
+    ErrorMessage(String),
+}
+
 fn main() -> Result<(), AError> {
     let app_res = AppResources::try_load(env::var("ASSETS_PATH").ok())
         .context("Failed to load app resources!")?;
-    let el = EventLoopBuilder::new().build();
+    let el = EventLoopBuilder::<AppEvent>::with_user_event().build();
+    let elproxy = el.create_proxy();
     let AppWindow { glc, wc, win } = window::create_window(&el, None);
     let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc), None);
     let mut app = App::new(&app_res, &glc);
@@ -411,6 +439,42 @@ fn main() -> Result<(), AError> {
                         }
                         _ => (),
                     }
+                }
+            }
+            Event::UserEvent(app_event) => {
+                match app_event {
+                    AppEvent::LoadMD3 => todo!(),
+                    AppEvent::LoadTextureReplacement { name, image } => {
+                        match app.texture_cache.set(Arc::clone(&glc), name.clone(), image) {
+                            Ok(t) => {
+                                if let Some(model) = &app.model_data {
+                                    let replace_texture_on_surface: Vec<bool> = model.surfaces.iter().map(|m| {
+                                        m.shaders.iter().any(|sdr| String::from_utf8_stop(&sdr.name) == name)
+                                        || (name == BLANK_SURFACE_SHADER_NAME && m.shaders.is_empty())
+                                    }).collect();
+                                    replace_texture_on_surface.iter().enumerate().for_each(|(index, &y)| {
+                                        if y {
+                                            app.models[index].uniforms.tex = Rc::clone(&t);
+                                        }
+                                    })
+                                }
+                            },
+                            Err(e) => {
+                                let el = app.error_log.get_or_insert(String::new());
+                                if !el.is_empty() {
+                                    el.push('\n');
+                                }
+                                el.push_str(&e.to_string());
+                            },
+                        }
+                    },
+                    AppEvent::ErrorMessage(e) => {
+                        let el = app.error_log.get_or_insert(String::new());
+                        if !el.is_empty() {
+                            el.push('\n');
+                        }
+                        el.push_str(&e);
+                    },
                 }
             }
             Event::MainEventsCleared => {
@@ -682,6 +746,28 @@ Ok(())
                                         });
                                         if ui.button("Replace texture").clicked() {
                                             // Need surface index and new texture
+                                            let elp = elproxy.clone();
+                                            let sdr_name = surf.shaders.iter()
+                                                .next().map(|sdr| String::from_utf8_stop(&sdr.name))
+                                                .unwrap_or(Cow::from(BLANK_SURFACE_SHADER_NAME))
+                                                .to_string();
+                                            platform::spawn_local(async move {
+                                                let file_handle = AsyncFileDialog::new()
+                                                    .add_filter("Image", &["png", "jpg", "tga", "pcx", "dds"])
+                                                    .pick_file()
+                                                    .await;
+                                                if let Some(file_handle) = file_handle {
+                                                    let file_data = Cursor::new(file_handle.read().await);
+                                                    match Surface::read_image_data(file_data) {
+                                                        Ok(image) => {
+                                                            elp.send_event(AppEvent::LoadTextureReplacement { name: sdr_name, image }).expect("Could not send event");
+                                                        },
+                                                        Err(e) => {
+                                                            elp.send_event(AppEvent::ErrorMessage(e.to_string())).expect("Could not send event");
+                                                        },
+                                                    }
+                                                }
+                                            });
                                         }
                                     },
                                 );

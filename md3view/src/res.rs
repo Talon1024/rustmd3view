@@ -7,7 +7,7 @@ use std::{
     borrow::Cow,
     env,
     fs::{self, File},
-    io::{Read, Seek, BufReader},
+    io::{BufReader, Read, Seek},
     ops::Deref,
     path::Path,
 };
@@ -49,7 +49,9 @@ impl Surface {
         let file_reader = File::open(path)?;
         Self::read_image_data(file_reader)
     }
-    pub fn read_image_data(image_data: impl Read + Seek) -> Result<Surface, Error> {
+    pub fn read_image_data(
+        image_data: impl Read + Seek,
+    ) -> Result<Surface, Error> {
         use SurfaceType::*;
         let reader = BufReader::new(image_data);
         let image = Reader::new(reader).with_guessed_format()?.decode()?;

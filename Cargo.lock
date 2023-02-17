@@ -1495,6 +1495,7 @@ dependencies = [
  "glutin-winit",
  "image",
  "instant",
+ "lazy_static",
  "once_cell",
  "raw-window-handle",
  "rayon",

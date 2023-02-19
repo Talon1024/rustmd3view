@@ -18,10 +18,10 @@ use md3::MD3Model;
 use render::{
     BasicModel, IndexBuffer, ShaderProgramBuilder, ShaderStage, Texture,
     UniformsMD3, UniformsMD3Locations, UniformsRes, UniformsResLocations,
-    VertexBuffer,
+    VertexBuffer, VertexMD3,
 };
 use res::{AppResources, Surface};
-use rfd::{AsyncFileDialog, FileDialog};
+use rfd::AsyncFileDialog;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -146,7 +146,6 @@ struct AppControls {
 }
 
 struct App {
-    open_file_dialog: FileDialog,
     model_data: Option<Box<MD3Model>>,
     current_frame: f32,
     anim_playing: bool,
@@ -173,9 +172,6 @@ impl App {
             Rc::new(sp)
         };
         App {
-            open_file_dialog: FileDialog::new()
-                .set_title("Open MD3 model")
-                .add_filter("MD3", &["md3"]),
             model_data: None,
             current_frame: 0.,
             anim_playing: false,
@@ -309,9 +305,22 @@ const LOOK_LIMIT: f32 = {
 const BLANK_SURFACE_SHADER_NAME: &str = "_____blank_____";
 
 #[derive(Debug)]
+struct ModelStuff {
+    vb: Vec<VertexMD3>,
+    ib: Vec<u32>,
+    texture: OsString,
+}
+
+#[derive(Debug)]
 enum AppEvent {
-    LoadMD3,
-    LoadTextureReplacement { name: String, image: Surface },
+    LoadMD3 {
+        model: MD3Model,
+        stuff: Vec<ModelStuff>,
+    },
+    LoadTextureReplacement {
+        name: String,
+        image: Surface
+    },
     ErrorMessage(String),
 }
 
@@ -443,7 +452,51 @@ fn main() -> Result<(), AError> {
             }
             Event::UserEvent(app_event) => {
                 match app_event {
-                    AppEvent::LoadMD3 => todo!(),
+                    AppEvent::LoadMD3 {model, stuff} => {
+                        let elp = elproxy.clone();
+                        let num_frames = model.frames.len();
+                        app.frame_range = if num_frames > 1 {
+                            Some(0.0..=(num_frames - 1) as f32)
+                        } else {
+                            None
+                        };
+                        app.texture_cache.clear();
+                        app.anim_playing = false;
+                        app.current_frame = 0.;
+                        app.model_data = Some(Box::new(model));
+                        app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
+                        app.models = stuff.into_iter()
+                        .zip(app.model_data.as_ref().unwrap().surfaces.iter())
+                        .filter_map(|(data, surf)| {
+                            let (anim, rows_per_frame) = Texture::try_from_md3(Arc::clone(&glc), surf)
+                            .map_err(|e| {
+                                elp.send_event(
+                                    AppEvent::ErrorMessage(e.to_string()))
+                                    .expect("Could not send event");
+                            }).ok()?;
+                            let anim = Rc::new(anim);
+                            Some(BasicModel {
+                                vertex: VertexBuffer::new(Arc::clone(&glc), data.vb.into_boxed_slice()),
+                                index: IndexBuffer::new(Arc::clone(&glc), data.ib),
+                                shader: Rc::clone(&md3_shader),
+                                uniforms: UniformsMD3 {
+                                    tex: {
+                                        let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &data.texture);
+                                        if let Some(e) = error {
+                                            elp.send_event(AppEvent::ErrorMessage(e.to_string())).expect("Could not send event");
+                                        }
+                                        texture
+                                    },
+                                    anim,
+                                    gzdoom: Default::default(),
+                                    eye: Default::default(),
+                                    frame: Default::default(),
+                                    mode: Default::default(),
+                                    rowsPerFrame: rows_per_frame as i32,
+                                }
+                            })
+                        }).collect()
+                    },
                     AppEvent::LoadTextureReplacement { name, image } => {
                         match app.texture_cache.set(Arc::clone(&glc), name.clone(), image) {
                             Ok(t) => {
@@ -572,70 +625,44 @@ fn main() -> Result<(), AError> {
                         egui::menu::bar(ui, |ui| {
                             ui.menu_button("File", |ui| {
                                 if ui.button("Open").clicked() {
-if let Some(fpath) = app.open_file_dialog.clone().pick_file() {
-if let Err(e) = File::open(&fpath)
-    .map_err(AError::from)
-    .and_then(|mut f| md3::read_md3(&mut f).map_err(AError::from))
-    .and_then(|model| {
-let num_frames = model.frames.len();
-app.frame_range = if num_frames > 1 {
-    Some(0.0..=(num_frames - 1) as f32)
-} else {
-    None
-};
-app.texture_cache.clear();
-app.anim_playing = false;
-app.current_frame = 0.;
-app.model_data = Some(Box::new(model));
-app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
-app.models = app.model_data.as_ref().unwrap().surfaces
-    .iter().filter_map(|surf| {
-        let vb = VertexBuffer::from_surface(Arc::clone(&glc), surf);
-        let ib = IndexBuffer::from_surface(Arc::clone(&glc), surf);
-    let (an, rows_per_frame) = Texture::try_from_md3(Arc::clone(&glc), &surf).map_err(|e| {
-        let el = app.error_log.get_or_insert(String::new());
-        if !el.is_empty() { el.push('\n'); }
-        el.push_str(&e.to_string()); e}).ok()?;
-    Some(BasicModel {
-        vertex: vb,
-        index: ib,
-        shader: Rc::clone(&md3_shader),
-        uniforms: UniformsMD3 {
-            tex: {
-                let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &surf.shaders.get(0).map(|s|
-                    Cow::from(OsString::from(fpath.parent().unwrap_or(&fpath).join(
+                                    let elp = elproxy.clone();
+                                    platform::spawn_local(async move {
+let picker = AsyncFileDialog::new().add_filter("MD3", &["md3"]);
+if let Some(file_handle) = picker.pick_file().await {
+    let fpath = file_handle.path();
+    if let Err(e) = File::open(&fpath)
+        .map_err(AError::from)
+        .and_then(|mut f| {
+            md3::read_md3(&mut f).map_err(AError::from)
+                .with_context(|| format!(
+                    "Error reading file {}",
+                    fpath.to_string_lossy()))
+        })
+        .and_then(|model| {
+            let stuff: Vec<_> = model.surfaces.iter().filter_map(|surf| {
+                let vb = VertexBuffer::from_surface(surf);
+                let ib = IndexBuffer::from_surface(surf);
+                let texture = surf.shaders.get(0).map(|s|
+                OsString::from(fpath.parent().unwrap_or(&fpath).join(
                     String::from_utf8_stop(&s.name)
                     .trim_matches(|c| c == char::from_u32(0).unwrap())
-                    .trim())))
-                ).unwrap_or(Cow::from(OsString::new())));
-                if let Some(e) = error {
-                    let el = app.error_log.get_or_insert(String::new());
-                    if !el.is_empty() { el.push('\n'); }
-                    el.push_str(&e.to_string());
-                }
-                texture
-            },
-            anim: Rc::new(an),
-            gzdoom: Default::default(),
-            eye: Default::default(),
-            frame: Default::default(),
-            mode: Default::default(),
-            rowsPerFrame: rows_per_frame as i32,
-        }
-    })
-}).collect();
-Ok(())
-}) {
-    let el = app.error_log.get_or_insert(String::new());
-    if !el.is_empty() {
-        el.push('\n');
+                    .trim()))
+                ).unwrap_or(OsString::new());
+                Some(ModelStuff {
+                    vb,
+                    ib,
+                    texture,
+                })
+            }).collect();
+            elp.send_event(AppEvent::LoadMD3 { model, stuff })
+                .expect("Could not send event");
+            Ok(())
+    }) {
+        elp.send_event(AppEvent::ErrorMessage(e.to_string()))
+            .expect("Could not send event");
     }
-    el.push_str(&format!(
-        "Error reading file {}:\n{}",
-        fpath.display(), e
-    ));
 }
-}
+});
                                     ui.close_menu();
                                 }
                                 if ui.button("Quit").clicked() {

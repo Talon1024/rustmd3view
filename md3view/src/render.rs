@@ -424,7 +424,7 @@ impl VertexBuffer {
             // size,
         }
     }
-    pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
+    /* pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
         let buf: Vec<VertexMD3> = surf
             .texcoords
             .iter()
@@ -432,6 +432,13 @@ impl VertexBuffer {
             .map(|(index, uv)| VertexMD3 { index: index as u32, uv: uv.0 })
             .collect();
         VertexBuffer::new(glc, buf.into_boxed_slice())
+    } */
+    pub fn from_surface(surf: &MD3Surface) -> Vec<VertexMD3> {
+        surf.texcoords
+            .iter()
+            .enumerate()
+            .map(|(index, uv)| VertexMD3 { index: index as u32, uv: uv.0 })
+            .collect()
     }
 }
 
@@ -494,9 +501,8 @@ where
 }
 
 impl IndexBuffer<u32> {
-    pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
-        let buf = surf.triangles.iter().flat_map(|t| t.0).collect();
-        IndexBuffer::new(glc, buf)
+    pub fn from_surface(surf: &MD3Surface) -> Vec<u32> {
+        surf.triangles.iter().flat_map(|t| t.0).collect()
     }
 }
 
@@ -654,7 +660,7 @@ impl Texture {
         let mut width = surf.num_verts as i32;
         let mut two_power = (1..MAX_TEXTURE_POT.get().copied().unwrap())
             .rev()
-            .filter(|&i| 2i32.pow(i) < width)
+            .filter(|&i| 2i32.pow(i) <= width)
             .next()
             .unwrap_or(0);
         let mut rows_per_frame;

@@ -37,8 +37,11 @@ use std::{
 };
 use str_util::StringFromBytes;
 use window::AppWindow;
-use winit::event::Event;
-use winit::event_loop::{ControlFlow, EventLoopBuilder};
+use winit::{
+    event::Event,
+    event_loop::{ControlFlow, EventLoopBuilder},
+    window::WindowBuilder,
+};
 
 struct TextureCache {
     cache: HashMap<String, Rc<Texture>, RandomState>,
@@ -325,11 +328,16 @@ enum AppEvent {
 }
 
 fn main() -> Result<(), AError> {
+    platform::init();
     let app_res = AppResources::try_load(env::var("ASSETS_PATH").ok())
         .context("Failed to load app resources!")?;
     let el = EventLoopBuilder::<AppEvent>::with_user_event().build();
     let elproxy = el.create_proxy();
-    let AppWindow { glc, wc, win } = window::create_window(&el, None);
+    let win = WindowBuilder::new()
+        .with_title("RustMD3View")
+        .build(&el)
+        .expect("Could not build the window!");
+    let (wc, glc) = platform::show_window(&win, &el, platform::DrawingContextRequest::OpenGL);
     let mut egui_glow = egui_glow::EguiGlow::new(&el, Arc::clone(&glc), None);
     let mut app = App::new(&app_res, &glc);
     let md3_shader = Rc::new({

@@ -26,8 +26,7 @@ use std::{
     collections::HashMap,
     env,
     f32::consts::FRAC_PI_2,
-    ffi::OsString,
-    fs::File,
+    ffi::{OsString, OsStr},
     io::Cursor,
     ops::{Add, Bound, Mul, RangeBounds, RangeInclusive},
     path::Path,
@@ -309,7 +308,7 @@ const BLANK_SURFACE_SHADER_NAME: &str = "_____blank_____";
 struct ModelStuff {
     vb: Vec<VertexMD3>,
     ib: Vec<u32>,
-    texture: OsString,
+    texture: Option<Cow<'static, OsStr>>,
 }
 
 #[derive(Debug)]
@@ -487,7 +486,11 @@ fn main() -> Result<(), AError> {
                                 shader: Rc::clone(&md3_shader),
                                 uniforms: UniformsMD3 {
                                     tex: {
-                                        let (texture, error) = app.texture_cache.get(Arc::clone(&glc), &data.texture);
+                                        let (texture, error) = app.texture_cache
+                                        .get(
+                                            Arc::clone(&glc),
+                                            &data.texture.unwrap_or(Cow::from(AsRef::<OsStr>::as_ref(NULL_TEXTURE_NAME)))
+                                        );
                                         if let Some(e) = error {
                                             elp.send_event(AppEvent::ErrorMessage(e.to_string())).expect("Could not send event");
                                         }
@@ -635,26 +638,27 @@ fn main() -> Result<(), AError> {
                                     platform::spawn_local(async move {
 let picker = AsyncFileDialog::new().add_filter("MD3", &["md3"]);
 if let Some(file_handle) = picker.pick_file().await {
-    let fpath = file_handle.path();
-    // let fdata = file_handle.read().await;
-    if let Err(e) = File::open(&fpath)
-        .map_err(AError::from)
-        .and_then(|mut f| {
-            md3::read_md3(&mut f).map_err(AError::from)
-                .with_context(|| format!(
-                    "Error reading file {}",
-                    fpath.to_string_lossy()))
-        })
+    let fpath = if cfg!(not(target_family = "wasm32")) {
+        Some(file_handle.path())
+    } else {
+        None
+    };
+    let fname = file_handle.file_name();
+    let fdata = file_handle.read().await;
+    let mut cursor = Cursor::new(&fdata);
+    if let Err(e) = md3::read_md3(&mut cursor).map_err(AError::from)
+        .with_context(|| format!("Error reading file {}", &fname))
         .and_then(|model| {
             let stuff: Vec<_> = model.surfaces.iter().filter_map(|surf| {
                 let vb = VertexBuffer::from_surface(surf);
                 let ib = IndexBuffer::from_surface(surf);
-                let texture = surf.shaders.get(0).map(|s|
-                OsString::from(fpath.parent().unwrap_or(&fpath).join(
-                    String::from_utf8_stop(&s.name)
-                    .trim_matches(|c| c == char::from_u32(0).unwrap())
-                    .trim()))
-                ).unwrap_or(OsString::new());
+                let texture = surf.shaders.get(0)
+                .zip(fpath).and_then(|(shader, fpath)| {
+                    let shader = String::from_utf8_stop(shader.name.as_slice());
+                    let fullpath = fpath.parent().unwrap().join(shader.as_ref());
+                    let fullpath = OsString::from(fullpath);
+                    Some(Cow::from(fullpath))
+                });
                 Some(ModelStuff {
                     vb,
                     ib,

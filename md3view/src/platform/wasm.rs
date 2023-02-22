@@ -1,11 +1,15 @@
+use anyhow::Error;
 use super::DrawingContextRequest;
 use base64::Engine;
 use glow::Context;
 use std::{future::Future, panic, str, sync::Arc};
 use wasm_bindgen::{prelude::*, JsValue};
+use wasm_bindgen_futures::JsFuture;
 use web_sys::{
     console, window, HtmlElement, WebGl2RenderingContext, WebGlRenderingContext,
+    Response,
 };
+use js_sys::{ArrayBuffer, Uint8Array, JsString};
 use winit::platform::web::WindowExtWebSys;
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
@@ -129,4 +133,30 @@ pub(crate) async fn save_file(contents: Vec<u8>, fname: &str) {
         .set_attribute("href", &href)
         .expect("`href` should be a valid attribute name");
     anchor.click();
+}
+
+// An asset is a file that should be part of the application distribution
+pub(crate) async fn load_asset(relative_path: &str) -> Result<(usize, Vec<u8>), Error> {
+    let window = window().expect("No window!");
+    let fut = JsFuture::from(window.fetch_with_str(relative_path));
+    let response = fut.await
+        .map_err(|e| {
+            let jstr = JsString::from(e);
+            Error::msg(ToString::to_string(&jstr))
+        })
+        .map(|f| f.dyn_into::<Response>().expect("Not a response!"))?;
+    match response.status() {
+        200..=299 => (),
+        _ => return Err(Error::msg(response.status_text())),
+    }
+    let fut = JsFuture::from(response.array_buffer().unwrap());
+    let array_buffer = fut.await
+        .map_err(|e| {
+            let jstr = JsString::from(e);
+            Error::msg(ToString::to_string(&jstr))
+        })
+        .map(|f| f.dyn_into::<ArrayBuffer>().expect("Not a ArrayBuffer!"))?;
+    let size = array_buffer.byte_length() as usize;
+    let vec = Uint8Array::new(&array_buffer).to_vec();
+    Ok((size, vec))
 }

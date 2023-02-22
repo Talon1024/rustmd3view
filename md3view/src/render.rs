@@ -4,7 +4,7 @@ use crate::res::{Surface, SurfaceType};
 use anyhow::Error as AError;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3};
-use glow::{Context, HasContext, NativeUniformLocation};
+use glow::{Context, HasContext};
 use once_cell::race::OnceBox;
 use std::{
     marker::PhantomData,
@@ -13,6 +13,8 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
+
+type GLUniformLocation = <Context as HasContext>::UniformLocation;
 
 // #[macro_use]
 // mod macros;
@@ -195,13 +197,13 @@ pub struct UniformsMD3 {
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Default)]
 pub struct UniformsMD3Locations {
-    gzdoom: Option<NativeUniformLocation>,
-    anim: Option<NativeUniformLocation>,
-    eye: Option<NativeUniformLocation>,
-    frame: Option<NativeUniformLocation>,
-    mode: Option<NativeUniformLocation>,
-    tex: Option<NativeUniformLocation>,
-    rowsPerFrame: Option<NativeUniformLocation>,
+    gzdoom: Option<GLUniformLocation>,
+    anim: Option<GLUniformLocation>,
+    eye: Option<GLUniformLocation>,
+    frame: Option<GLUniformLocation>,
+    mode: Option<GLUniformLocation>,
+    tex: Option<GLUniformLocation>,
+    rowsPerFrame: Option<GLUniformLocation>,
 }
 
 impl ShaderUniformLocations for UniformsMD3Locations {
@@ -317,8 +319,8 @@ pub struct UniformsRes {
 
 #[derive(Debug, Clone, Default)]
 pub struct UniformsResLocations {
-    eye: Option<NativeUniformLocation>,
-    shaded: Option<NativeUniformLocation>,
+    eye: Option<GLUniformLocation>,
+    shaded: Option<GLUniformLocation>,
 }
 
 impl ShaderUniformLocations for UniformsResLocations {

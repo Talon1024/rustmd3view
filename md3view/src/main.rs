@@ -5,7 +5,6 @@ mod platform;
 mod render;
 mod res;
 mod str_util;
-mod window;
 
 use ahash::RandomState;
 use anyhow::{Context as AContext, Error as AError};
@@ -36,7 +35,6 @@ use std::{
     sync::Arc,
 };
 use str_util::StringFromBytes;
-use window::AppWindow;
 use winit::{
     event::Event,
     event_loop::{ControlFlow, EventLoopBuilder},
@@ -638,6 +636,7 @@ fn main() -> Result<(), AError> {
 let picker = AsyncFileDialog::new().add_filter("MD3", &["md3"]);
 if let Some(file_handle) = picker.pick_file().await {
     let fpath = file_handle.path();
+    // let fdata = file_handle.read().await;
     if let Err(e) = File::open(&fpath)
         .map_err(AError::from)
         .and_then(|mut f| {

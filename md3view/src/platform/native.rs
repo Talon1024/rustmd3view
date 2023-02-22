@@ -1,3 +1,4 @@
+use anyhow::Error;
 use super::DrawingContextRequest;
 use futures::executor::ThreadPool;
 use glow::Context;
@@ -15,7 +16,12 @@ use lazy_static::lazy_static;
 use raw_window_handle::HasRawWindowHandle;
 use rfd::AsyncFileDialog;
 use std::{
-    ffi::CStr, fs::File, future::Future, io::Write, num::NonZeroU32, sync::Arc,
+    ffi::CStr,
+    fs::File,
+    future::Future,
+    io::{Read, Write},
+    num::NonZeroU32,
+    sync::Arc,
 };
 use winit::{
     dpi::PhysicalSize, event_loop::EventLoopWindowTarget, window::Window,
@@ -124,4 +130,12 @@ pub(crate) async fn save_file(contents: Vec<u8>, fname: &str) {
             }
         }
     }
+}
+
+// An asset is a file that should be part of the application distribution
+pub(crate) async fn load_asset(relative_path: &str) -> Result<(usize, Vec<u8>), Error> {
+    let mut file = File::open(relative_path)?;
+    let mut data = Vec::new();
+    let size = file.read_to_end(&mut data)?;
+    Ok((size, data))
 }

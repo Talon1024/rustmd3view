@@ -10,6 +10,7 @@ use ahash::RandomState;
 use anyhow::{Context as AContext, Error as AError};
 use egui::{Color32, Id, LayerId, Order, Pos2, TextStyle};
 use eye::{Camera, OrbitCamera};
+use futures::executor;
 use glam::{Affine3A, Mat4, Vec3};
 use glow::{Context as GLContext, HasContext};
 use instant::Instant;
@@ -326,7 +327,7 @@ enum AppEvent {
 
 fn main() -> Result<(), AError> {
     platform::init();
-    let app_res = AppResources::try_load(env::var("ASSETS_PATH").ok())
+    let app_res = executor::block_on(AppResources::try_load(env::var("ASSETS_PATH").ok()))
         .context("Failed to load app resources!")?;
     let el = EventLoopBuilder::<AppEvent>::with_user_event().build();
     let elproxy = el.create_proxy();

@@ -1,13 +1,15 @@
 use crate::render::VertexRes;
+use crate::platform;
 use anyhow::Error;
 use bytemuck::Pod;
+use futures::join;
 use glam::Vec3;
 use image::{io::Reader, DynamicImage::*, ImageBuffer, Pixel};
 use std::{
     borrow::Cow,
     env,
-    fs::{self, File},
-    io::{BufReader, Read, Seek},
+    fs::File,
+    io::{Cursor, BufReader, Read, Seek},
     ops::Deref,
     path::Path,
 };
@@ -105,22 +107,34 @@ pub struct AppResources {
 }
 
 impl AppResources {
-    pub fn try_load(
+    pub async fn try_load(
         path: Option<impl AsRef<Path>>,
     ) -> Result<Box<AppResources>, Error> {
         let path = match path {
+            // Borrowed
             Some(ref p) => Cow::from(p.as_ref()),
+            // Owned
             None => {
                 let mut pwd = env::current_dir()?;
                 pwd.push("assets");
                 Cow::from(pwd)
             }
         };
-        let null_texture = Surface::read_image_file(path.join("null.png"))?;
-        let md3_vertex_shader = fs::read_to_string(path.join("md3.vert"))?;
-        let md3_pixel_shader = fs::read_to_string(path.join("md3.frag"))?;
-        let res_vertex_shader = fs::read_to_string(path.join("res.vert"))?;
-        let res_pixel_shader = fs::read_to_string(path.join("res.frag"))?;
+        let null_texture = platform::load_asset(path.join("null.png").to_string_lossy().to_string());
+        let md3_vertex_shader = platform::load_asset(path.join("md3.vert").to_string_lossy().to_string());
+        let md3_pixel_shader = platform::load_asset(path.join("md3.frag").to_string_lossy().to_string());
+        let res_vertex_shader = platform::load_asset(path.join("res.vert").to_string_lossy().to_string());
+        let res_pixel_shader = platform::load_asset(path.join("res.frag").to_string_lossy().to_string());
+
+        let (null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader) = join!(null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader);
+
+        let null_texture = Surface::read_image_data(Cursor::new(null_texture.unwrap())).unwrap();
+        let md3_vertex_shader = String::from_utf8(md3_vertex_shader.unwrap()).unwrap();
+        let md3_pixel_shader = String::from_utf8(md3_pixel_shader.unwrap()).unwrap();
+        let res_pixel_shader = String::from_utf8(res_pixel_shader.unwrap()).unwrap();
+        let res_vertex_shader = String::from_utf8(res_vertex_shader.unwrap()).unwrap();
+
+
         Ok(Box::new(AppResources {
             null_surface: null_texture,
             md3_pixel_shader,

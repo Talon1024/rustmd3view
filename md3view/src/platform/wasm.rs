@@ -136,9 +136,9 @@ pub(crate) async fn save_file(contents: Vec<u8>, fname: &str) {
 }
 
 // An asset is a file that should be part of the application distribution
-pub(crate) async fn load_asset(relative_path: &str) -> Result<(usize, Vec<u8>), Error> {
+pub(crate) async fn load_asset(relative_path: impl AsRef<str>) -> Result<Vec<u8>, Error> {
     let window = window().expect("No window!");
-    let fut = JsFuture::from(window.fetch_with_str(relative_path));
+    let fut = JsFuture::from(window.fetch_with_str(relative_path.as_ref()));
     let response = fut.await
         .map_err(|e| {
             let jstr = JsString::from(e);
@@ -157,6 +157,7 @@ pub(crate) async fn load_asset(relative_path: &str) -> Result<(usize, Vec<u8>), 
         })
         .map(|f| f.dyn_into::<ArrayBuffer>().expect("Not a ArrayBuffer!"))?;
     let size = array_buffer.byte_length() as usize;
-    let vec = Uint8Array::new(&array_buffer).to_vec();
-    Ok((size, vec))
+    let data = Uint8Array::new(&array_buffer).to_vec();
+    assert_eq!(size, data.len());
+    Ok(data)
 }

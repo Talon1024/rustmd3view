@@ -104,6 +104,8 @@ pub struct AppResources {
     pub md3_vertex_shader: String,
     pub res_pixel_shader: String,
     pub res_vertex_shader: String,
+    pub lines_pixel_shader: String,
+    pub lines_vertex_shader: String,
 }
 
 impl AppResources {
@@ -125,14 +127,18 @@ impl AppResources {
         let md3_pixel_shader = platform::load_asset(path.join("md3.frag").to_string_lossy().to_string());
         let res_vertex_shader = platform::load_asset(path.join("res.vert").to_string_lossy().to_string());
         let res_pixel_shader = platform::load_asset(path.join("res.frag").to_string_lossy().to_string());
+        let lines_vertex_shader = platform::load_asset(path.join("lines.vert").to_string_lossy().to_string());
+        let lines_pixel_shader = platform::load_asset(path.join("lines.frag").to_string_lossy().to_string());
 
-        let (null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader) = join!(null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader);
+        let (null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader, lines_vertex_shader, lines_pixel_shader) = join!(null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader, lines_vertex_shader, lines_pixel_shader);
 
         let null_texture = Surface::read_image_data(Cursor::new(null_texture.unwrap())).unwrap();
         let md3_vertex_shader = String::from_utf8(md3_vertex_shader.unwrap()).unwrap();
         let md3_pixel_shader = String::from_utf8(md3_pixel_shader.unwrap()).unwrap();
         let res_pixel_shader = String::from_utf8(res_pixel_shader.unwrap()).unwrap();
         let res_vertex_shader = String::from_utf8(res_vertex_shader.unwrap()).unwrap();
+        let lines_vertex_shader = String::from_utf8(lines_vertex_shader.unwrap()).unwrap();
+        let lines_pixel_shader = String::from_utf8(lines_pixel_shader.unwrap()).unwrap();
 
 
         Ok(Box::new(AppResources {
@@ -141,6 +147,8 @@ impl AppResources {
             md3_vertex_shader,
             res_pixel_shader,
             res_vertex_shader,
+            lines_vertex_shader,
+            lines_pixel_shader,
         }))
     }
 }

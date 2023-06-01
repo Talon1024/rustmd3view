@@ -308,24 +308,13 @@ fn read_tag(data: &mut (impl Read + Seek)) -> MD3Result<MD3FrameTag> {
     tag.origin.y = f32::from_le_bytes(int_buf);
     data.read_exact(&mut int_buf).or(Err(EOF))?;
     tag.origin.z = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.x_axis.x = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.x_axis.y = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.x_axis.z = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.y_axis.x = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.y_axis.y = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.y_axis.z = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.z_axis.x = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.z_axis.y = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.axes.z_axis.z = f32::from_le_bytes(int_buf);
+    let mut mtx_buf = [0.0f32; 9];
+    mtx_buf.as_mut_slice().iter_mut().try_for_each(|el| {
+        data.read_exact(&mut int_buf).or(Err(EOF))?;
+        *el = f32::from_le_bytes(int_buf);
+        Ok(())
+    })?;
+    tag.axes = Mat3::from_cols_array(&mtx_buf);
     Ok(tag)
 }
 
@@ -348,7 +337,7 @@ fn read_surface(data: &mut (impl Read + Seek)) -> MD3Result<MD3Surface> {
     }
     data.read_exact(&mut surface.name).or(Err(EOF))?;
     data.seek(SeekFrom::Current(4)).or(Err(EOF))?; // flags (unused)
-                                                   // Sizes/counts
+    // Sizes/counts
     data.read_exact(&mut int_buf).or(Err(EOF))?;
     surface.num_frames = u32::from_le_bytes(int_buf) as usize;
     data.read_exact(&mut int_buf).or(Err(EOF))?;

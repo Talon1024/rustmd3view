@@ -5,9 +5,11 @@ mod platform;
 mod render;
 mod res;
 mod str_util;
+mod data;
 
 use ahash::RandomState;
 use anyhow::{Context as AContext, Error as AError};
+use data::ScreenSize;
 use egui::{Color32, Id, LayerId, Order, Pos2, TextStyle};
 use eye::{Camera, OrbitCamera};
 use futures::executor;
@@ -18,7 +20,7 @@ use md3::MD3Model;
 use render::{
     BasicModel, IndexBuffer, ShaderProgramBuilder, ShaderStage, Texture,
     UniformsMD3, UniformsMD3Locations, UniformsRes, UniformsResLocations,
-    VertexBuffer, VertexMD3,
+    VertexBuffer, VertexMD3, ThickLines,
 };
 use res::{AppResources, Surface};
 use rfd::AsyncFileDialog;
@@ -38,7 +40,7 @@ use str_util::StringFromBytes;
 use winit::{
     event::Event,
     event_loop::{ControlFlow, EventLoopBuilder},
-    window::WindowBuilder,
+    window::WindowBuilder, dpi::LogicalSize,
 };
 
 struct TextureCache {
@@ -160,6 +162,8 @@ struct App {
     camera: OrbitCamera,
     controls: AppControls,
     texture_cache: TextureCache,
+    screen_size: ScreenSize,
+    lines: ThickLines,
 }
 
 impl App {
@@ -211,6 +215,8 @@ impl App {
                 Arc::clone(glc),
                 &res.null_surface,
             ),
+            screen_size: ScreenSize::default(),
+            lines: ThickLines::new(Arc::clone(glc), res),
         }
     }
 }
@@ -345,13 +351,11 @@ fn main() -> Result<(), AError> {
             .build(Arc::clone(&glc))?;
         sdr
     });
-    app.camera.aspect = {
-        let logical_size =
-            win.inner_size().to_logical::<f32>(win.scale_factor());
-        logical_size.width / logical_size.height
-    };
-    let mut window_size =
-        win.inner_size().to_logical::<f32>(win.scale_factor());
+    app.screen_size = ScreenSize::from(
+        win.inner_size()
+            .to_logical::<f32>(
+            win.scale_factor()));
+    app.camera.aspect = app.screen_size.aspect_ratio();
     let md3_model_scale = Vec3::new(1., -1., 1.);
     let md3_model_matrix = Mat4::from_scale(md3_model_scale);
     unsafe {
@@ -406,8 +410,11 @@ fn main() -> Result<(), AError> {
                         *control_flow = ControlFlow::ExitWithCode(0);
                     }
                     Resized(new_size) => {
-                        window_size = new_size.to_logical::<f32>(win.scale_factor());
-                        app.camera.aspect = window_size.width / window_size.height;
+                        app.screen_size = ScreenSize::from(
+                            new_size
+                            .to_logical::<f32>(
+                                win.scale_factor()));
+                        app.camera.aspect = app.screen_size.aspect_ratio();
                     }
                     MouseInput { state, button, .. } => match button {
                         MouseButton::Left => {
@@ -611,8 +618,8 @@ fn main() -> Result<(), AError> {
                     ) * -60.;
                     // 160 pixels left from top right corner, 80 pixels down from top right corner
                     let trans = Mat4::from_translation(Vec3::new(
-                        1.0 - (320. / window_size.width),
-                        1.0 - (160. / window_size.height),
+                        1.0 - (320. / app.screen_size.width),
+                        1.0 - (160. / app.screen_size.height),
                         0.,
                     ));
                     let scale = Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
@@ -838,9 +845,9 @@ if let Some(file_handle) = picker.pick_file().await {
                                 let pos = (app.camera.view_projection() * md3_model_matrix)
                                     .project_point3(tag_origin);
                                 let Vec3 { x, y, .. } = pos;
-                                let x = x.mul_add(0.5, 0.5) * window_size.width;
+                                let x = x.mul_add(0.5, 0.5) * app.screen_size.width;
                                 // In OpenGL NDC, +y is up and -y is down
-                                let y = (-y).mul_add(0.5, 0.5) * window_size.height;
+                                let y = (-y).mul_add(0.5, 0.5) * app.screen_size.height;
                                 Pos2 { x, y }
                             };
                             painter.galley(pos, galley);

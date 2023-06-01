@@ -1,9 +1,10 @@
+use crate::data::ScreenSize;
 use crate::err_util::GLError;
 use crate::md3::MD3Surface;
-use crate::res::{Surface, SurfaceType};
+use crate::res::{Surface, SurfaceType, AppResources};
 use anyhow::Error as AError;
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3, Vec4, UVec2};
 use glow::{Context, HasContext};
 use once_cell::race::OnceBox;
 use std::{
@@ -18,14 +19,9 @@ type GLUniformLocation = <Context as HasContext>::UniformLocation;
 
 // #[macro_use]
 // mod macros;
-pub trait InterleavedVertexAttribute {
+pub trait InterleavedVertexAttribute : Sized {
     unsafe fn setup_vertex_attrs(glc: &Context);
-    fn stride() -> i32
-    where
-        Self: Sized,
-    {
-        mem::size_of::<Self>() as i32
-    }
+    const STRIDE: i32 = mem::size_of::<Self>() as i32;
 }
 
 pub trait ShaderUniformLocations: Default {
@@ -154,7 +150,7 @@ impl InterleavedVertexAttribute for VertexMD3 {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
-        let stride = Self::stride();
+        let stride = Self::STRIDE;
 
         glc.vertex_attrib_pointer_i32(
             attrib_index,
@@ -270,7 +266,7 @@ impl InterleavedVertexAttribute for VertexRes {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
-        let stride = Self::stride();
+        let stride = Self::STRIDE;
 
         glc.vertex_attrib_pointer_f32(
             attrib_index,
@@ -361,7 +357,7 @@ impl InterleavedVertexAttribute for VertexSprite {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
-        let stride = Self::stride();
+        let stride = Self::STRIDE;
 
         glc.vertex_attrib_pointer_f32(
             attrib_index,
@@ -414,8 +410,8 @@ impl VertexBuffer {
                 glow::STATIC_DRAW,
             );
             T::setup_vertex_attrs(glc);
-            glc.bind_buffer(glow::ARRAY_BUFFER, None);
             glc.bind_vertex_array(None);
+            glc.bind_buffer(glow::ARRAY_BUFFER, None);
             (vao, vbo)
         };
         // let size = buf.len() as i32;
@@ -952,5 +948,222 @@ where
             GLError::get(glc)?;
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ThickLineInstance {
+    pub offset_norm: Vec2,
+    pub length_px: f32,
+    pub angle_rad_ccw: f32,
+    pub colour_rgba: Vec4,
+}
+
+impl From<(Vec2, Vec2)> for ThickLineInstance {
+    fn from((a, b): (Vec2, Vec2)) -> Self {
+        if a.x == b.x {
+            ThickLineInstance {
+                offset_norm: [a, b].iter().copied().max_by(|a, b| a.y.total_cmp(&b.y)).unwrap_or(a),
+                length_px: f32::abs(a.y - b.y),
+                angle_rad_ccw: std::f32::consts::FRAC_PI_2,
+                colour_rgba: Vec4::ONE,
+            }
+        } else {
+            ThickLineInstance {
+                ..Default::default()
+            }
+        }
+    }
+}
+
+struct ThickLineInstanceRaw {
+    offset_norm_length_px_angle_rad_ccw: [f32; 4],
+    colour_rgb: [f32; 4],
+}
+
+impl From<&ThickLineInstance> for ThickLineInstanceRaw {
+    fn from(value: &ThickLineInstance) -> Self {
+        Self {
+            offset_norm_length_px_angle_rad_ccw: [
+                value.offset_norm.x, value.offset_norm.y,
+                value.length_px, value.angle_rad_ccw
+            ],
+            colour_rgb: value.colour_rgba.to_array(),
+        }
+    }
+}
+
+const MAX_LINES_INSTANCES: usize = 128;
+
+#[derive(Debug, Clone)]
+pub struct ThickLinesInstanceUniformLocations {
+    offset_norm_length_px_angle_rad_ccw: GLUniformLocation,
+    colour_rgb: GLUniformLocation,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ThickLinesUniformLocations {
+    window_resolution: Option<GLUniformLocation>,
+    line_instances: Option<[ThickLinesInstanceUniformLocations; MAX_LINES_INSTANCES]>,
+}
+
+impl ShaderUniformLocations for ThickLinesUniformLocations {
+    fn setup(
+        &mut self,
+        glc: &Context,
+        program: <Context as HasContext>::Program,
+    ) {
+        unsafe {
+            self.window_resolution = Some(glc.get_uniform_location(program, "windowResolution").unwrap());
+            self.line_instances = Some([0; MAX_LINES_INSTANCES].map(|index| {
+                let name = format!("lineInstances[{index}].offset_norm_length_px_angle_rad_ccw");
+                let offset_norm_length_px_angle_rad_ccw = glc.get_uniform_location(program, &name).unwrap();
+                let name = format!("lineInstances[{index}].colour_rgb");
+                let colour_rgb = glc.get_uniform_location(program, &name).unwrap();
+                ThickLinesInstanceUniformLocations {
+                    offset_norm_length_px_angle_rad_ccw, colour_rgb
+                }
+            }));
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ThickLinesUniforms {
+    window_resolution: ScreenSize,
+}
+
+impl ShaderUniforms<ThickLinesUniformLocations> for ThickLinesUniforms {
+    fn set(&self, glc: &Context, locations: &ThickLinesUniformLocations) -> () {
+        unsafe {
+            glc.uniform_2_f32_slice(locations.window_resolution.as_ref(), &<[f32; 2]>::from(self.window_resolution));
+        }
+    }
+}
+
+pub struct ThickLines {
+    glc: Arc<Context>,
+    ebo: <Context as HasContext>::Buffer,
+    vao: <Context as HasContext>::VertexArray,
+    vbo: <Context as HasContext>::Buffer,
+    uniforms: ThickLinesUniforms,
+    locations: ThickLinesUniformLocations,
+    shader: ShaderProgram<ThickLinesUniformLocations>,
+    pub instances: Vec<ThickLineInstance>,
+}
+
+impl ThickLines {
+    const THICK_LINE_INDEX: [u16; 4] = [0, 1, 2, 3];
+    const THICK_LINE_VERTEX: [Vec2; 4] = [
+        Vec2 {
+            x: 0.0,
+            y: 1.0,
+        },                  //  1-------0   y=1
+        Vec2 {              //  |       |   x=0
+            x: -1.0,        //  |       |
+            y: 1.0,         //  2-------3   y=-1
+        },
+        Vec2 {
+            x: -1.0,
+            y: -1.0,
+        },
+        Vec2 {
+            x: 0.0,
+            y: -1.0,
+        },
+    ];
+    pub fn new(glc: Arc<Context>, res: &AppResources) -> Self {
+        let stride = std::mem::size_of::<Vec2>() as i32;
+        let (ebo, vao, vbo) = unsafe {
+            let glc = &glc;
+            let vao = glc.create_vertex_array().unwrap();
+            glc.bind_vertex_array(Some(vao));
+            let vbo = glc.create_buffer().unwrap();
+            let ebo = glc.create_buffer().unwrap();
+            glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+            glc.buffer_data_u8_slice(
+                glow::ELEMENT_ARRAY_BUFFER,
+                bytemuck::cast_slice(&Self::THICK_LINE_INDEX),
+                glow::STATIC_DRAW,
+            );
+            glc.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+            glc.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&Self::THICK_LINE_VERTEX),
+                glow::STATIC_DRAW,
+            );
+            // T::setup_vertex_attrs(glc);
+            glc.vertex_attrib_pointer_f32(
+                0, // attrib_index,
+                2,
+                glow::FLOAT,
+                false,
+                stride,
+                0, // offset,
+            );
+            glc.enable_vertex_attrib_array(0);
+            // end T::setup_vertex_attrs(glc);
+            glc.bind_vertex_array(None);
+            glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+            glc.bind_buffer(glow::ARRAY_BUFFER, None);
+            (ebo, vao, vbo)
+        };
+        let shader = ShaderProgramBuilder::new()
+            .add_shader(ShaderStage::Vertex, &res.lines_vertex_shader)
+            .add_shader(ShaderStage::Fragment, &res.lines_pixel_shader)
+            .build(Arc::clone(&glc)).unwrap();
+        let uniforms = ThickLinesUniforms::default();
+        let mut locations = ThickLinesUniformLocations::default();
+        locations.setup(&glc, shader.prog);
+        Self {
+            glc,
+            vao,
+            vbo,
+            ebo,
+            instances: Vec::with_capacity(32),
+            shader,
+            uniforms,
+            locations,
+        }
+    }
+
+    pub fn render<F>(
+        &mut self,
+        modify_uniforms: F,
+    ) -> Result<(), AError>
+    where
+        F: Fn(&mut ThickLinesUniforms) -> (),
+    {
+        let glc = &self.glc;
+        self.shader.activate()?;
+        modify_uniforms(&mut self.uniforms);
+        self.instances.chunks(MAX_LINES_INSTANCES).try_for_each(|group| {
+            self.uniforms.set(glc, &self.locations);
+            group.iter().map(ThickLineInstanceRaw::from)
+                .zip(self.locations.line_instances.as_ref().unwrap().iter())
+                .for_each(|(inst, locations)| {
+                unsafe {
+                    glc.uniform_4_f32_slice(Some(&locations.offset_norm_length_px_angle_rad_ccw), &inst.offset_norm_length_px_angle_rad_ccw);
+                    glc.uniform_4_f32_slice(Some(&locations.colour_rgb), &inst.colour_rgb);
+                }
+            });
+            unsafe {
+                glc.bind_vertex_array(Some(self.vao));
+                glc.draw_elements_instanced(glow::TRIANGLE_STRIP, 4, glow::UNSIGNED_SHORT, 0, group.len() as i32);
+            }
+            GLError::get(glc)
+        })?;
+        self.instances.clear();
+        Ok(())
+    }
+}
+
+impl Drop for ThickLines {
+    fn drop(&mut self) {
+        unsafe {
+            self.glc.delete_vertex_array(self.vao);
+            self.glc.delete_buffer(self.ebo);
+            self.glc.delete_buffer(self.vbo);
+        }
     }
 }

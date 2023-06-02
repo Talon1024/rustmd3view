@@ -21,11 +21,14 @@ impl ScreenSize {
     pub fn aspect_ratio(&self) -> f32 {
         self.width / self.height
     }
+    pub fn to_array(&self) -> [f32; 2] {
+        [self.width, self.height]
+    }
 }
 
 impl From<ScreenSize> for [f32; 2] {
     fn from(value: ScreenSize) -> Self {
-        [value.width, value.height]
+        value.to_array()
     }
 }
 

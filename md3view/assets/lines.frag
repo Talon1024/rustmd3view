@@ -5,7 +5,7 @@ in vec4 colour;
 
 out vec4 FragColor;
 
-const float thickness = 0.0625;
+const float thickness = 0.0;
 
 // Anti-aliased line
 void main() {
@@ -14,5 +14,6 @@ void main() {
 	if (thickness > 0.) {
 		dist = max(0., dist - thickness) * factor;
 	}
+	dist = 1. - dist;
 	FragColor = colour * dist;
 }

@@ -4,7 +4,7 @@ use crate::md3::MD3Surface;
 use crate::res::{Surface, SurfaceType, AppResources};
 use anyhow::Error as AError;
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec2, Vec3, Vec4, UVec2};
+use glam::{Mat4, Vec2, Vec3, Vec4};
 use glow::{Context, HasContext};
 use once_cell::race::OnceBox;
 use std::{
@@ -951,45 +951,79 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ThickLineInstance {
-    pub offset_norm: Vec2,
-    pub length_px: f32,
-    pub angle_rad_ccw: f32,
-    pub colour_rgba: Vec4,
+pub struct ThickLineInstanceInfo {
+    pub a: Vec2,
+    pub b: Vec2,
+    pub colour: Option<Vec4>,
+    pub res: Option<ScreenSize>,
 }
 
-impl From<(Vec2, Vec2)> for ThickLineInstance {
-    fn from((a, b): (Vec2, Vec2)) -> Self {
-        if a.x == b.x {
-            ThickLineInstance {
-                offset_norm: [a, b].iter().copied().max_by(|a, b| a.y.total_cmp(&b.y)).unwrap_or(a),
-                length_px: f32::abs(a.y - b.y),
-                angle_rad_ccw: std::f32::consts::FRAC_PI_2,
-                colour_rgba: Vec4::ONE,
-            }
-        } else {
-            ThickLineInstance {
+impl From<ThickLineInstanceInfo> for ThickLineInstanceRaw {
+    fn from(ThickLineInstanceInfo {
+        mut a, mut b, colour, res
+    }: ThickLineInstanceInfo) -> Self {
+        let colour_rgba = colour.unwrap_or(Vec4::ONE);
+        let length_px = (b - a).length();
+        if length_px == 0.0 {
+            return ThickLineInstanceRaw {
+                colour_rgba: colour_rgba.to_array(),
                 ..Default::default()
-            }
+            };
+        }
+        // Assuming the coordinates of a and b are in pixels from the top left
+        // corner
+        let angle_rad_ccw = {
+            let vec = b - a;
+            vec.y.atan2(vec.x)
+        };
+        if let Some(res) = res {
+            let fac = Vec2::from_array(res.to_array().map(|n| 2./n));
+            a = a.mul_add(fac, -Vec2::ONE);
+            b = b.mul_add(fac, -Vec2::ONE);
+        }
+        if a.x == b.x {
+            let y = match (a, b) {
+                (a, b) if a.y < b.y => a.y,
+                (a, b) if b.y < a.y => b.y,
+                _ => unreachable!(),
+            };
+            let angle_rad_ccw = std::f32::consts::FRAC_PI_2;
+            ThickLineInstanceRaw::new(
+                Vec2::new(a.x, y),
+                length_px,
+                angle_rad_ccw,
+                colour_rgba,
+            )
+        } else {
+            let offset_norm = match(a, b) {
+                (a, b) if a.x > b.x => a,
+                (a, b) if b.x > a.x => b,
+                _ => unreachable!()
+            };
+            ThickLineInstanceRaw::new(
+                offset_norm,
+                length_px,
+                angle_rad_ccw,
+                colour_rgba
+            )
         }
     }
 }
 
-struct ThickLineInstanceRaw {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ThickLineInstanceRaw {
     offset_norm_length_px_angle_rad_ccw: [f32; 4],
-    colour_rgb: [f32; 4],
+    colour_rgba: [f32; 4],
 }
 
-impl From<&ThickLineInstance> for ThickLineInstanceRaw {
-    fn from(value: &ThickLineInstance) -> Self {
-        Self {
+impl ThickLineInstanceRaw {
+    fn new(offset_norm: Vec2, length_px: f32, angle_rad_ccw: f32, colour_rgba: Vec4) -> Self {
+        ThickLineInstanceRaw {
             offset_norm_length_px_angle_rad_ccw: [
-                value.offset_norm.x, value.offset_norm.y,
-                value.length_px, value.angle_rad_ccw
+                offset_norm.x, offset_norm.y,
+                length_px, angle_rad_ccw
             ],
-            colour_rgb: value.colour_rgba.to_array(),
-        }
+            colour_rgba: colour_rgba.to_array() }
     }
 }
 
@@ -1030,7 +1064,7 @@ impl ShaderUniformLocations for ThickLinesUniformLocations {
 
 #[derive(Debug, Clone, Default)]
 pub struct ThickLinesUniforms {
-    window_resolution: ScreenSize,
+    pub window_resolution: ScreenSize,
 }
 
 impl ShaderUniforms<ThickLinesUniformLocations> for ThickLinesUniforms {
@@ -1049,27 +1083,27 @@ pub struct ThickLines {
     uniforms: ThickLinesUniforms,
     locations: ThickLinesUniformLocations,
     shader: ShaderProgram<ThickLinesUniformLocations>,
-    pub instances: Vec<ThickLineInstance>,
+    pub instances: Vec<ThickLineInstanceRaw>,
 }
 
 impl ThickLines {
-    const THICK_LINE_INDEX: [u16; 4] = [0, 1, 2, 3];
+    const THICK_LINE_INDEX: [u16; 4] = [3, 0, 2, 1];
     const THICK_LINE_VERTEX: [Vec2; 4] = [
         Vec2 {
             x: 0.0,
             y: 1.0,
-        },                  //  1-------0   y=1
-        Vec2 {              //  |       |   x=0
-            x: -1.0,        //  |       |
-            y: 1.0,         //  2-------3   y=-1
+        },                  //  0-------3   y=1
+        Vec2 {              //  |       |
+            x: 0.0,         //  |       |
+            y: -1.0,        //  1-------2   y=-1
         },
         Vec2 {
-            x: -1.0,
+            x: 1.0,
             y: -1.0,
         },
         Vec2 {
-            x: 0.0,
-            y: -1.0,
+            x: 1.0,
+            y: 1.0,
         },
     ];
     pub fn new(glc: Arc<Context>, res: &AppResources) -> Self {
@@ -1139,16 +1173,17 @@ impl ThickLines {
         modify_uniforms(&mut self.uniforms);
         self.instances.chunks(MAX_LINES_INSTANCES).try_for_each(|group| {
             self.uniforms.set(glc, &self.locations);
-            group.iter().map(ThickLineInstanceRaw::from)
+            group.iter()
                 .zip(self.locations.line_instances.as_ref().unwrap().iter())
                 .for_each(|(inst, locations)| {
                 unsafe {
                     glc.uniform_4_f32_slice(Some(&locations.offset_norm_length_px_angle_rad_ccw), &inst.offset_norm_length_px_angle_rad_ccw);
-                    glc.uniform_4_f32_slice(Some(&locations.colour_rgb), &inst.colour_rgb);
+                    glc.uniform_4_f32_slice(Some(&locations.colour_rgb), &inst.colour_rgba);
                 }
             });
             unsafe {
                 glc.bind_vertex_array(Some(self.vao));
+                glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ebo));
                 glc.draw_elements_instanced(glow::TRIANGLE_STRIP, 4, glow::UNSIGNED_SHORT, 0, group.len() as i32);
             }
             GLError::get(glc)

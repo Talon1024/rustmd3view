@@ -17,13 +17,13 @@ uniform ThickLineInstance lineInstances[MAX_INSTANCES];
 
 void main()
 {
-	vec2 scale = float(LINE_THICKNESS_PIXELS) / windowResolution;
+	vec2 scale = (float(LINE_THICKNESS_PIXELS) + .5) / windowResolution;
 	ThickLineInstance instanceInfo = lineInstances[gl_InstanceID];
 	vec2 offsetNorm = instanceInfo.offset_norm_length_px_angle_rad_ccw.xy;
 	float lengthPx = instanceInfo.offset_norm_length_px_angle_rad_ccw.z;
 	float angleRadCcw = instanceInfo.offset_norm_length_px_angle_rad_ccw.w;
 	colour = instanceInfo.colour_rgb;
-	texCoord = aPos.y + 1. / 2.; // -1 -> 0, 1 -> 1
+	texCoord = aPos.y * 0.5 + 0.5; // -1 -> 0, 1 -> 1
 	vec2 pos = aPos * scale * vec2(lengthPx, 1.);
 	float sin_angle = sin(angleRadCcw);
 	float cos_angle = cos(angleRadCcw);

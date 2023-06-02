@@ -13,14 +13,14 @@ use data::ScreenSize;
 use egui::{Color32, Id, LayerId, Order, Pos2, TextStyle};
 use eye::{Camera, OrbitCamera};
 use futures::executor;
-use glam::{Affine3A, Mat4, Vec3};
+use glam::{Affine3A, Mat4, Vec3, Vec2, Vec3Swizzles};
 use glow::{Context as GLContext, HasContext};
 use instant::Instant;
 use md3::MD3Model;
 use render::{
     BasicModel, IndexBuffer, ShaderProgramBuilder, ShaderStage, Texture,
     UniformsMD3, UniformsMD3Locations, UniformsRes, UniformsResLocations,
-    VertexBuffer, VertexMD3, ThickLines,
+    VertexBuffer, VertexMD3, ThickLines, ThickLineInstanceInfo,
 };
 use res::{AppResources, Surface};
 use rfd::AsyncFileDialog;
@@ -40,7 +40,7 @@ use str_util::StringFromBytes;
 use winit::{
     event::Event,
     event_loop::{ControlFlow, EventLoopBuilder},
-    window::WindowBuilder, dpi::LogicalSize,
+    window::WindowBuilder,
 };
 
 struct TextureCache {
@@ -589,7 +589,7 @@ fn main() -> Result<(), AError> {
                         let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
                         let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
                         let tag_distance =
-                            (app.camera.position() * md3_model_scale).distance(tag_origin) / 256.;
+                            (app.camera.position(None) * md3_model_scale).distance(tag_origin) / 256.;
                         let mvp = app.camera.view_projection()
                             * md3_model_matrix
                             * Affine3A::from_mat3_translation(tag_axes, tag_origin)
@@ -609,28 +609,47 @@ fn main() -> Result<(), AError> {
                 unsafe {
                     glc.depth_func(glow::ALWAYS);
                 }
-                app.axes.shader.activate().unwrap();
+                // app.axes.shader.activate().unwrap();
                 let mvp = {
-                    let eye = Vec3::new(
-                        app.camera.longtude.cos() * app.camera.latitude.cos(),
-                        app.camera.longtude.sin() * app.camera.latitude.cos(),
-                        app.camera.latitude.sin(),
-                    ) * -60.;
-                    // 160 pixels left from top right corner, 80 pixels down from top right corner
-                    let trans = Mat4::from_translation(Vec3::new(
-                        1.0 - (320. / app.screen_size.width),
-                        1.0 - (160. / app.screen_size.height),
-                        0.,
-                    ));
-                    let scale = Mat4::from_scale(Vec3::new(0.125, 0.125, 0.125));
+                    let eye = app.camera.position(Some(60.));
                     let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
                     let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
-                    trans * proj * view * scale * md3_model_matrix
+                    let scale = Mat4::from_scale(Vec3::splat(30.0));
+                    scale * proj * view
                 };
 
-                if let Err(e) = app.axes.render(&glc, |uniforms| {
+                /* if let Err(e) = app.axes.render(&glc, |uniforms| {
                     uniforms.eye = mvp;
                     uniforms.shaded = false;
+                }) {
+                    eprintln!("{:?}", e);
+                } */
+
+                let axes_origin_xy = Vec2::new(
+                    app.screen_size.width - 160.,
+                    app.screen_size.height - 80.
+                );
+                let axes_points = [
+                    Vec3::X * 50., Vec3::Y * 50., Vec3::Z * 50.]
+                    .map(|v| mvp.project_point3(v).xy() + axes_origin_xy);
+
+                let axes_colours = [
+                    Vec3::X,
+                    Vec3::Y,
+                    Vec3::new(0.1875, 0.4375, 1.0)
+                ];
+                axes_points.iter().zip(axes_colours.iter())
+                .for_each(|(point, colour)| {
+                    app.lines.instances.push(ThickLineInstanceInfo {
+                        a: axes_origin_xy,
+                        b: *point,
+                        colour: Some(colour.extend(1.0)),
+                        res: Some(app.screen_size),
+                    }.into());
+                });
+
+                if let Err(e) = app.lines.render(|uniforms| {
+                    uniforms.window_resolution = app.screen_size;
                 }) {
                     eprintln!("{:?}", e);
                 }

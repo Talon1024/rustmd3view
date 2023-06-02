@@ -951,6 +951,16 @@ where
     }
 }
 
+pub trait AngleOfVector {
+    fn to_angle(&self) -> f32;
+}
+
+impl AngleOfVector for Vec2 {
+    fn to_angle(&self) -> f32 {
+        self.y.atan2(self.x)
+    }
+}
+
 pub struct ThickLineInstanceInfo {
     pub a: Vec2,
     pub b: Vec2,
@@ -963,25 +973,18 @@ impl From<ThickLineInstanceInfo> for ThickLineInstanceRaw {
         a, b, colour, res
     }: ThickLineInstanceInfo) -> Self {
         let colour_rgba = colour.unwrap_or(Vec4::ONE);
-        let (mut a, b) = match (a, b) {
-            (a, b) if a.x > b.x || a.y < b.y => (a, b),
-            (a, b) if b.x > a.x || b.y < a.y => (b, a),
-            _ => (a, b)
-        };
-        let length_px = (b - a).length();
+        let mut a = a;
+        let diff = b - a;
+        let length_px = diff.length();
         if length_px == 0.0 {
             return ThickLineInstanceRaw::default();
         }
-        // Assuming the coordinates of a and b are in pixels from the top left
-        // corner
-        let angle_rad_ccw = {
-            let vec = b - a;
-            vec.y.atan2(vec.x)
-        };
+        let angle_rad_ccw = -diff.to_angle();
         if let Some(res) = res {
-            let fac = Vec2::from_array(res.to_array().map(|n| 2./n));
-            a = a.mul_add(fac, -Vec2::ONE);
-            // b = b.mul_add(fac, -Vec2::ONE);
+            let add = Vec2::new(-1., 1.);
+            let fac = 2. / Vec2::from(res) * -add;
+            a = a.mul_add(fac, add);
+            // b = b.mul_add(fac, add);
         }
         ThickLineInstanceRaw::new(
             a, length_px,
@@ -1031,7 +1034,12 @@ impl ShaderUniformLocations for ThickLinesUniformLocations {
     ) {
         unsafe {
             self.window_resolution = Some(glc.get_uniform_location(program, "windowResolution").unwrap());
-            self.line_instances = Some([0; MAX_LINES_INSTANCES].map(|index| {
+            let mut array = [0; MAX_LINES_INSTANCES];
+            array.as_mut().iter_mut().zip(0..MAX_LINES_INSTANCES)
+            .for_each(|(array_element, range_element)| {
+                *array_element = range_element;
+            });
+            self.line_instances = Some(array.map(|index| {
                 let name = format!("lineInstances[{index}].offset_norm_length_px_angle_rad_ccw");
                 let offset_norm_length_px_angle_rad_ccw = glc.get_uniform_location(program, &name).unwrap();
                 let name = format!("lineInstances[{index}].colour_rgb");
@@ -1080,11 +1088,11 @@ impl ThickLines {
             y: -1.0,        //  1-------2   y=-1
         },
         Vec2 {
-            x: 1.0,
+            x: 2.0, // Total NDC range
             y: -1.0,
         },
         Vec2 {
-            x: 1.0,
+            x: 2.0,
             y: 1.0,
         },
     ];
@@ -1166,7 +1174,13 @@ impl ThickLines {
             unsafe {
                 glc.bind_vertex_array(Some(self.vao));
                 glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ebo));
-                glc.draw_elements_instanced(glow::TRIANGLE_STRIP, 4, glow::UNSIGNED_SHORT, 0, group.len() as i32);
+                glc.draw_elements_instanced(
+                    glow::TRIANGLE_STRIP, // mode
+                    Self::THICK_LINE_INDEX.len() as i32, // count
+                    glow::UNSIGNED_SHORT, // type (u16)
+                    0, // offset
+                    group.len() as i32 // instances
+                );
             }
             GLError::get(glc)
         })?;

@@ -13,7 +13,7 @@ use data::ScreenSize;
 use egui::{Color32, Id, LayerId, Order, Pos2, TextStyle};
 use eye::{Camera, OrbitCamera};
 use futures::executor;
-use glam::{Affine3A, Mat4, Vec3, Vec2, Vec3Swizzles};
+use glam::{Affine3A, Mat4, Vec3, Vec2};
 use glow::{Context as GLContext, HasContext};
 use instant::Instant;
 use md3::MD3Model;
@@ -394,6 +394,18 @@ fn main() -> Result<(), AError> {
             Err(e) => println!("{}", e),
         }
     }
+
+    // For testing
+    /* let circle_points: Vec<_> = {
+        let circle_start_angle = std::f32::consts::PI / 12.;
+        let circle_angle = std::f32::consts::TAU / 12.;
+        let circle_radius = 100.;
+        (0..12).map(|c| {
+            Vec2::from_angle(circle_start_angle + circle_angle * c as f32) * circle_radius
+        }).collect()
+    }; */
+    // For testing
+
     el.run(move |event, _window, control_flow| {
         match event {
             Event::WindowEvent {
@@ -610,13 +622,13 @@ fn main() -> Result<(), AError> {
                     glc.depth_func(glow::ALWAYS);
                 }
                 // app.axes.shader.activate().unwrap();
-                let mvp = {
+                /* let mvp = {
                     let eye = app.camera.position(Some(60.));
                     let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
                     let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
                     let scale = Mat4::from_scale(Vec3::splat(30.0));
                     scale * proj * view
-                };
+                }; */
 
                 /* if let Err(e) = app.axes.render(&glc, |uniforms| {
                     uniforms.eye = mvp;
@@ -627,15 +639,17 @@ fn main() -> Result<(), AError> {
 
                 let axes_origin_xy = Vec2::new(
                     app.screen_size.width - 160.,
-                    app.screen_size.height - 80.
+                    100.
                 );
                 let axes_points = [
-                    Vec3::X * 50., Vec3::Y * 50., Vec3::Z * 50.]
-                    .map(|v| mvp.project_point3(v).xy() + axes_origin_xy);
+                    axes_origin_xy + Vec2::new(-35., 10.),
+                    axes_origin_xy + Vec2::new(-35., -10.),
+                    axes_origin_xy + Vec2::new(0., -40.),
+                ];
 
                 let axes_colours = [
-                    Vec3::X,
-                    Vec3::Y,
+                    Vec3::new(0.984375, 0., 0.),
+                    Vec3::new(0., 0.984375, 0.),
                     Vec3::new(0.1875, 0.4375, 1.0)
                 ];
                 axes_points.iter().zip(axes_colours.iter())
@@ -647,6 +661,22 @@ fn main() -> Result<(), AError> {
                         res: Some(app.screen_size),
                     }.into());
                 });
+                // For testing
+                /* circle_points.windows(2).chain(
+                    std::iter::once([
+                        circle_points.last().copied().unwrap(),
+                        circle_points.first().copied().unwrap()
+                    ].as_slice()))
+                .for_each(|window| {
+                    if let [a, b] = window {
+                        let a = *a + (Vec2::from(app.screen_size) / 2.);
+                        let b = *b + (Vec2::from(app.screen_size) / 2.);
+                        app.lines.instances.push(ThickLineInstanceInfo {
+                            a, b, colour: None, res: Some(app.screen_size)
+                        }.into());
+                    }
+                }); */
+                // For testing
 
                 if let Err(e) = app.lines.render(|uniforms| {
                     uniforms.window_resolution = app.screen_size;

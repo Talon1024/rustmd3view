@@ -32,6 +32,12 @@ impl From<ScreenSize> for [f32; 2] {
     }
 }
 
+impl From<ScreenSize> for Vec2 {
+    fn from(value: ScreenSize) -> Self {
+        Vec2 { x: value.width, y: value.height }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BoundingBox {
     pub min: Vec3,

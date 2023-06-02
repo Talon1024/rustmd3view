@@ -13,7 +13,7 @@ use data::ScreenSize;
 use egui::{Color32, Id, LayerId, Order, Pos2, TextStyle};
 use eye::{Camera, OrbitCamera};
 use futures::executor;
-use glam::{Affine3A, Mat4, Vec3, Vec2};
+use glam::{Affine3A, Mat4, Vec3, Vec2, Vec3Swizzles};
 use glow::{Context as GLContext, HasContext};
 use instant::Instant;
 use md3::MD3Model;
@@ -622,13 +622,13 @@ fn main() -> Result<(), AError> {
                     glc.depth_func(glow::ALWAYS);
                 }
                 // app.axes.shader.activate().unwrap();
-                /* let mvp = {
+                let mvp = {
                     let eye = app.camera.position(Some(60.));
                     let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
                     let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
-                    let scale = Mat4::from_scale(Vec3::splat(30.0));
+                    let scale = Mat4::from_scale(Vec3::splat(60.0));
                     scale * proj * view
-                }; */
+                };
 
                 /* if let Err(e) = app.axes.render(&glc, |uniforms| {
                     uniforms.eye = mvp;
@@ -642,10 +642,10 @@ fn main() -> Result<(), AError> {
                     100.
                 );
                 let axes_points = [
-                    axes_origin_xy + Vec2::new(-35., 10.),
-                    axes_origin_xy + Vec2::new(-35., -10.),
-                    axes_origin_xy + Vec2::new(0., -40.),
-                ];
+                    Vec3::X * 30.,
+                    Vec3::Y * 30.,
+                    Vec3::Z * 30.,
+                ].map(|pt| mvp.project_point3(pt).xy() + axes_origin_xy);
 
                 let axes_colours = [
                     Vec3::new(0.984375, 0., 0.),
@@ -667,15 +667,32 @@ fn main() -> Result<(), AError> {
                         circle_points.last().copied().unwrap(),
                         circle_points.first().copied().unwrap()
                     ].as_slice()))
-                .for_each(|window| {
+                .enumerate().for_each(|(index, window)| {
                     if let [a, b] = window {
                         let a = *a + (Vec2::from(app.screen_size) / 2.);
                         let b = *b + (Vec2::from(app.screen_size) / 2.);
+
+                        let hue = index as f32 / circle_points.len() as f32 * std::f32::consts::PI;
+                        let subtract: [f32; 3] = [0., 0.333333333, 0.666666666];
+                        let rgb = Vec3::from_array(subtract.map(|sub| {
+                            (hue - sub * std::f32::consts::PI * 2.).cos() + 0.5
+                        }));
+                        
                         app.lines.instances.push(ThickLineInstanceInfo {
-                            a, b, colour: None, res: Some(app.screen_size)
+                            a, b, colour: Some(rgb.extend(1.0)), res: Some(app.screen_size)
                         }.into());
                     }
-                }); */
+                });
+                */
+                /* app.lines.instances.push(ThickLineInstanceInfo {
+                    a: Vec2::new(20., 70.), b: Vec2::new(70., 30.), colour: None, res: Some(app.screen_size)
+                }.into());
+                app.lines.instances.push(ThickLineInstanceInfo {
+                    a: Vec2::new(70., 30.), b: Vec2::new(50., 30.), colour: None, res: Some(app.screen_size)
+                }.into());
+                app.lines.instances.push(ThickLineInstanceInfo {
+                    a: Vec2::new(70., 30.), b: Vec2::new(70., 50.), colour: None, res: Some(app.screen_size)
+                }.into()); */
                 // For testing
 
                 if let Err(e) = app.lines.render(|uniforms| {

@@ -960,15 +960,17 @@ pub struct ThickLineInstanceInfo {
 
 impl From<ThickLineInstanceInfo> for ThickLineInstanceRaw {
     fn from(ThickLineInstanceInfo {
-        mut a, mut b, colour, res
+        a, b, colour, res
     }: ThickLineInstanceInfo) -> Self {
         let colour_rgba = colour.unwrap_or(Vec4::ONE);
+        let (mut a, b) = match (a, b) {
+            (a, b) if a.x > b.x || a.y < b.y => (a, b),
+            (a, b) if b.x > a.x || b.y < a.y => (b, a),
+            _ => (a, b)
+        };
         let length_px = (b - a).length();
         if length_px == 0.0 {
-            return ThickLineInstanceRaw {
-                colour_rgba: colour_rgba.to_array(),
-                ..Default::default()
-            };
+            return ThickLineInstanceRaw::default();
         }
         // Assuming the coordinates of a and b are in pixels from the top left
         // corner
@@ -979,34 +981,13 @@ impl From<ThickLineInstanceInfo> for ThickLineInstanceRaw {
         if let Some(res) = res {
             let fac = Vec2::from_array(res.to_array().map(|n| 2./n));
             a = a.mul_add(fac, -Vec2::ONE);
-            b = b.mul_add(fac, -Vec2::ONE);
+            // b = b.mul_add(fac, -Vec2::ONE);
         }
-        if a.x == b.x {
-            let y = match (a, b) {
-                (a, b) if a.y < b.y => a.y,
-                (a, b) if b.y < a.y => b.y,
-                _ => unreachable!(),
-            };
-            let angle_rad_ccw = std::f32::consts::FRAC_PI_2;
-            ThickLineInstanceRaw::new(
-                Vec2::new(a.x, y),
-                length_px,
-                angle_rad_ccw,
-                colour_rgba,
-            )
-        } else {
-            let offset_norm = match(a, b) {
-                (a, b) if a.x > b.x => a,
-                (a, b) if b.x > a.x => b,
-                _ => unreachable!()
-            };
-            ThickLineInstanceRaw::new(
-                offset_norm,
-                length_px,
-                angle_rad_ccw,
-                colour_rgba
-            )
-        }
+        ThickLineInstanceRaw::new(
+            a, length_px,
+            angle_rad_ccw,
+            colour_rgba,
+        )
     }
 }
 
@@ -1023,7 +1004,8 @@ impl ThickLineInstanceRaw {
                 offset_norm.x, offset_norm.y,
                 length_px, angle_rad_ccw
             ],
-            colour_rgba: colour_rgba.to_array() }
+            colour_rgba: colour_rgba.to_array()
+        }
     }
 }
 

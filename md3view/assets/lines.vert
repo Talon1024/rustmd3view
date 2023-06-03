@@ -12,7 +12,7 @@ out vec4 colour;
 
 uniform vec2 windowResolution;
 const uint MAX_INSTANCES = 128u;
-const float LINE_THICKNESS_PIXELS = 1.25;
+const float LINE_THICKNESS_PIXELS = 1.5;
 uniform ThickLineInstance lineInstances[MAX_INSTANCES];
 
 void main()

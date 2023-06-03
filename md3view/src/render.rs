@@ -24,12 +24,11 @@ pub trait InterleavedVertexAttribute : Sized {
     const STRIDE: i32 = mem::size_of::<Self>() as i32;
 }
 
-pub trait ShaderUniformLocations: Default {
-    fn setup(
-        &mut self,
+pub trait ShaderUniformLocations {
+    fn get(
         glc: &Context,
         program: <Context as HasContext>::Program,
-    );
+    ) -> Self;
 }
 
 pub trait ShaderUniforms<L>
@@ -203,20 +202,28 @@ pub struct UniformsMD3Locations {
 }
 
 impl ShaderUniformLocations for UniformsMD3Locations {
-    fn setup(
-        &mut self,
+    fn get(
         glc: &Context,
         program: <Context as HasContext>::Program,
-    ) {
+    ) -> Self {
         unsafe {
-            self.gzdoom = glc.get_uniform_location(program, "gzdoom");
-            self.anim = glc.get_uniform_location(program, "anim");
-            self.eye = glc.get_uniform_location(program, "eye");
-            self.frame = glc.get_uniform_location(program, "frame");
-            self.mode = glc.get_uniform_location(program, "mode");
-            self.tex = glc.get_uniform_location(program, "tex");
-            self.rowsPerFrame =
+            let gzdoom = glc.get_uniform_location(program, "gzdoom");
+            let anim = glc.get_uniform_location(program, "anim");
+            let eye = glc.get_uniform_location(program, "eye");
+            let frame = glc.get_uniform_location(program, "frame");
+            let mode = glc.get_uniform_location(program, "mode");
+            let tex = glc.get_uniform_location(program, "tex");
+            let rows_per_frame =
                 glc.get_uniform_location(program, "rowsPerFrame");
+            UniformsMD3Locations {
+                gzdoom,
+                anim,
+                eye,
+                frame,
+                mode,
+                tex,
+                rowsPerFrame: rows_per_frame,
+            }
         }
     }
 }
@@ -320,14 +327,14 @@ pub struct UniformsResLocations {
 }
 
 impl ShaderUniformLocations for UniformsResLocations {
-    fn setup(
-        &mut self,
+    fn get(
         glc: &Context,
         program: <Context as HasContext>::Program,
-    ) {
+    ) -> Self {
         unsafe {
-            self.eye = glc.get_uniform_location(program, "eye");
-            self.shaded = glc.get_uniform_location(program, "shaded");
+            let eye = glc.get_uniform_location(program, "eye");
+            let shaded = glc.get_uniform_location(program, "shaded");
+            UniformsResLocations { eye, shaded }
         }
     }
 }
@@ -721,7 +728,7 @@ impl From<ShaderStage> for u32 {
 #[derive(Debug)]
 pub struct ShaderProgram<L>
 where
-    L: ShaderUniformLocations + Default,
+    L: ShaderUniformLocations,
 {
     glc: Arc<Context>,
     prog: <Context as HasContext>::Program,
@@ -731,7 +738,7 @@ where
 
 impl<L> ShaderProgram<L>
 where
-    L: ShaderUniformLocations + Default,
+    L: ShaderUniformLocations,
 {
     pub fn activate(&self) -> Result<(), AError> {
         let glc = &self.glc;
@@ -744,7 +751,7 @@ where
 
 impl<L> Drop for ShaderProgram<L>
 where
-    L: ShaderUniformLocations + Default,
+    L: ShaderUniformLocations,
 {
     fn drop(&mut self) {
         #[cfg(feature = "log_drop_gl_resources")]
@@ -763,7 +770,7 @@ struct Shader<'a> {
 
 pub struct ShaderProgramBuilder<'a, L>
 where
-    L: ShaderUniformLocations + Default,
+    L: ShaderUniformLocations,
 {
     shaders: Vec<Shader<'a>>,
     location_type: PhantomData<L>,
@@ -771,7 +778,7 @@ where
 
 impl<'a, L> ShaderProgramBuilder<'a, L>
 where
-    L: ShaderUniformLocations + Default,
+    L: ShaderUniformLocations,
 {
     pub fn new() -> Self {
         Self { shaders: vec![], location_type: PhantomData }
@@ -819,11 +826,7 @@ where
                 glc.delete_shader(shader);
             }
         }
-        let locations = {
-            let mut l = L::default();
-            l.setup(&glc, prog);
-            l
-        };
+        let locations = L::get(&glc, prog);
         Ok(ShaderProgram { glc, prog, locations })
     }
 }
@@ -1042,19 +1045,18 @@ pub struct ThickLinesUniformLocations {
 }
 
 impl ShaderUniformLocations for ThickLinesUniformLocations {
-    fn setup(
-        &mut self,
+    fn get(
         glc: &Context,
         program: <Context as HasContext>::Program,
-    ) {
+    ) -> Self {
         unsafe {
-            self.window_resolution = Some(glc.get_uniform_location(program, "windowResolution").unwrap());
+            let window_resolution = Some(glc.get_uniform_location(program, "windowResolution").unwrap());
             let mut array = [0; MAX_LINES_INSTANCES];
             array.as_mut().iter_mut().zip(0..MAX_LINES_INSTANCES)
             .for_each(|(array_element, range_element)| {
                 *array_element = range_element;
             });
-            self.line_instances = Some(array.map(|index| {
+            let line_instances = Some(array.map(|index| {
                 let name = format!("lineInstances[{index}].offset_norm_length_px_angle_rad_ccw");
                 let offset_norm_length_px_angle_rad_ccw = glc.get_uniform_location(program, &name).unwrap();
                 let name = format!("lineInstances[{index}].colour_rgb");
@@ -1063,6 +1065,7 @@ impl ShaderUniformLocations for ThickLinesUniformLocations {
                     offset_norm_length_px_angle_rad_ccw, colour_rgb
                 }
             }));
+            ThickLinesUniformLocations { window_resolution, line_instances }
         }
     }
 }
@@ -1152,8 +1155,7 @@ impl ThickLines {
             .add_shader(ShaderStage::Fragment, &res.lines_pixel_shader)
             .build(Arc::clone(&glc)).unwrap();
         let uniforms = ThickLinesUniforms::default();
-        let mut locations = ThickLinesUniformLocations::default();
-        locations.setup(&glc, shader.prog);
+        let locations = ThickLinesUniformLocations::get(&glc, shader.prog);
         Self {
             glc,
             vao,

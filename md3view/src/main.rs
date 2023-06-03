@@ -624,42 +624,76 @@ fn main() -> Result<(), AError> {
                 // app.axes.shader.activate().unwrap();
                 let mvp = {
                     let eye = app.camera.position(Some(60.));
-                    let view = Mat4::look_at_lh(eye, Vec3::ZERO, Vec3::Z);
-                    let proj = Mat4::perspective_lh(app.camera.fov, app.camera.aspect, 0.25, 512.);
+                    let view = Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Z);
+                    let proj = Mat4::orthographic_rh_gl(-50., 50., -50., 50., 0.25, 512.);
                     let scale = Mat4::from_scale(Vec3::splat(60.0));
                     scale * proj * view
                 };
-
-                /* if let Err(e) = app.axes.render(&glc, |uniforms| {
-                    uniforms.eye = mvp;
-                    uniforms.shaded = false;
-                }) {
-                    eprintln!("{:?}", e);
-                } */
 
                 let axes_origin_xy = Vec2::new(
                     app.screen_size.width - 160.,
                     100.
                 );
                 let axes_points = [
-                    Vec3::X * 30.,
-                    Vec3::Y * 30.,
-                    Vec3::Z * 30.,
-                ].map(|pt| mvp.project_point3(pt).xy() + axes_origin_xy);
+                    Vec3::X * -40.,
+                    Vec3::Y * -40.,
+                    Vec3::Z * -40.,
+                ].map(|pt| mvp.transform_point3(pt).xy() + axes_origin_xy);
 
                 let axes_colours = [
-                    Vec3::new(0.984375, 0., 0.),
-                    Vec3::new(0., 0.984375, 0.),
+                    Vec3::new(1.0, 0., 0.),
+                    Vec3::new(0., 0.75, 0.375),
                     Vec3::new(0.1875, 0.4375, 1.0)
+                ];
+
+                let axes_letters = [
+                    [
+                        Vec2 { x: 4., y: 10. },
+                        Vec2 { x: -4., y: -10. },
+                        Vec2 { x: -4., y: 10. },
+                        Vec2 { x: 4., y: -10. },
+                        Vec2 { x: 0., y: 0. }, // Please type checker
+                        Vec2 { x: 0., y: 0. },
+                    ], // X
+                    [
+                        Vec2 { x: 4., y: -10. },
+                        Vec2 { x: 0., y: 1. },
+                        Vec2 { x: 0., y: 1. },
+                        Vec2 { x: -4., y: -10. },
+                        Vec2 { x: 0., y: 1. },
+                        Vec2 { x: 0., y: 10. },
+                    ], // Y
+                    [
+                        Vec2 { x: 4., y: 10. },
+                        Vec2 { x: -4., y: 10. },
+                        Vec2 { x: -4., y: 10. },
+                        Vec2 { x: 4., y: -10. },
+                        Vec2 { x: 4., y: -10. },
+                        Vec2 { x: -4., y: -10. },
+                    ], // Z
                 ];
                 axes_points.iter().zip(axes_colours.iter())
                 .for_each(|(point, colour)| {
-                    app.lines.instances.push(ThickLineInstanceInfo {
+                    ThickLineInstanceInfo {
                         a: axes_origin_xy,
                         b: *point,
                         colour: Some(colour.extend(1.0)),
                         res: Some(app.screen_size),
-                    }.into());
+                    }.add_to(&mut app.lines.instances);
+                });
+                axes_letters.iter().zip(axes_colours.iter()).zip(axes_points.iter())
+                .for_each(|((letter, colour), &point)| {
+                    letter.chunks_exact(2).filter_map(|line| {
+                        if let &[a, b] = line {
+                            Some(ThickLineInstanceInfo {
+                                a: a + point, b: b + point,
+                                colour: Some(colour.extend(1.0)),
+                                res: Some(app.screen_size)
+                            })
+                        } else {
+                            None
+                        }
+                    }).for_each(|line| line.add_to(&mut app.lines.instances));
                 });
                 // For testing
                 /* circle_points.windows(2).chain(
@@ -672,7 +706,7 @@ fn main() -> Result<(), AError> {
                         let a = *a + (Vec2::from(app.screen_size) / 2.);
                         let b = *b + (Vec2::from(app.screen_size) / 2.);
 
-                        let hue = index as f32 / circle_points.len() as f32 * std::f32::consts::PI;
+                        let hue = index as f32 / circle_points.len() as f32 * std::f32::consts::TAU;
                         let subtract: [f32; 3] = [0., 0.333333333, 0.666666666];
                         let rgb = Vec3::from_array(subtract.map(|sub| {
                             (hue - sub * std::f32::consts::PI * 2.).cos() + 0.5

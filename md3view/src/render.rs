@@ -968,6 +968,21 @@ pub struct ThickLineInstanceInfo {
     pub res: Option<ScreenSize>,
 }
 
+impl ThickLineInstanceInfo {
+    fn validate(self) -> Option<Self> {
+        if self.a == self.b {
+            None
+        } else {
+            Some(self)
+        }
+    }
+    pub fn add_to(self, vec: &mut Vec<ThickLineInstanceRaw>) {
+        if let Some(line) = self.validate() {
+            vec.push(ThickLineInstanceRaw::from(line));
+        }
+    }
+}
+
 impl From<ThickLineInstanceInfo> for ThickLineInstanceRaw {
     fn from(ThickLineInstanceInfo {
         a, b, colour, res

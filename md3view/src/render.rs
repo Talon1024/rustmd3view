@@ -1034,14 +1034,14 @@ const MAX_LINES_INSTANCES: usize = 128;
 
 #[derive(Debug, Clone)]
 pub struct ThickLinesInstanceUniformLocations {
-    offset_norm_length_px_angle_rad_ccw: GLUniformLocation,
-    colour_rgb: GLUniformLocation,
+    offset_norm_length_px_angle_rad_ccw: Option<GLUniformLocation>,
+    colour_rgb: Option<GLUniformLocation>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct ThickLinesUniformLocations {
     window_resolution: Option<GLUniformLocation>,
-    line_instances: Option<[ThickLinesInstanceUniformLocations; MAX_LINES_INSTANCES]>,
+    line_instances: [ThickLinesInstanceUniformLocations; MAX_LINES_INSTANCES],
 }
 
 impl ShaderUniformLocations for ThickLinesUniformLocations {
@@ -1052,15 +1052,15 @@ impl ShaderUniformLocations for ThickLinesUniformLocations {
         unsafe {
             let window_resolution = Some(glc.get_uniform_location(program, "windowResolution").unwrap());
             let array = std::array::from_fn(|i| i);
-            let line_instances = Some(array.map(|index| {
+            let line_instances = array.map(|index| {
                 let name = format!("lineInstances[{index}].offset_norm_length_px_angle_rad_ccw");
-                let offset_norm_length_px_angle_rad_ccw = glc.get_uniform_location(program, &name).unwrap();
+                let offset_norm_length_px_angle_rad_ccw = glc.get_uniform_location(program, &name);
                 let name = format!("lineInstances[{index}].colour_rgb");
-                let colour_rgb = glc.get_uniform_location(program, &name).unwrap();
+                let colour_rgb = glc.get_uniform_location(program, &name);
                 ThickLinesInstanceUniformLocations {
                     offset_norm_length_px_angle_rad_ccw, colour_rgb
                 }
-            }));
+            });
             ThickLinesUniformLocations { window_resolution, line_instances }
         }
     }
@@ -1177,11 +1177,11 @@ impl ThickLines {
         self.instances.chunks(MAX_LINES_INSTANCES).try_for_each(|group| {
             self.uniforms.set(glc, &self.locations);
             group.iter()
-                .zip(self.locations.line_instances.as_ref().unwrap().iter())
+                .zip(self.locations.line_instances.as_ref().iter())
                 .for_each(|(inst, locations)| {
                 unsafe {
-                    glc.uniform_4_f32_slice(Some(&locations.offset_norm_length_px_angle_rad_ccw), &inst.offset_norm_length_px_angle_rad_ccw);
-                    glc.uniform_4_f32_slice(Some(&locations.colour_rgb), &inst.colour_rgba);
+                    glc.uniform_4_f32_slice(locations.offset_norm_length_px_angle_rad_ccw.as_ref(), &inst.offset_norm_length_px_angle_rad_ccw);
+                    glc.uniform_4_f32_slice(locations.colour_rgb.as_ref(), &inst.colour_rgba);
                 }
             });
             unsafe {

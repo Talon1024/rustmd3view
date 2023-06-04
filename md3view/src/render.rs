@@ -1051,11 +1051,7 @@ impl ShaderUniformLocations for ThickLinesUniformLocations {
     ) -> Self {
         unsafe {
             let window_resolution = Some(glc.get_uniform_location(program, "windowResolution").unwrap());
-            let mut array = [0; MAX_LINES_INSTANCES];
-            array.as_mut().iter_mut().zip(0..MAX_LINES_INSTANCES)
-            .for_each(|(array_element, range_element)| {
-                *array_element = range_element;
-            });
+            let array = std::array::from_fn(|i| i);
             let line_instances = Some(array.map(|index| {
                 let name = format!("lineInstances[{index}].offset_norm_length_px_angle_rad_ccw");
                 let offset_norm_length_px_angle_rad_ccw = glc.get_uniform_location(program, &name).unwrap();

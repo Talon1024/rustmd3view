@@ -30,7 +30,8 @@ use std::{
     env,
     f32::consts::FRAC_PI_2,
     ffi::{OsString, OsStr},
-    io::Cursor,
+    fs::File,
+    io::{Cursor, Read, Seek},
     ops::{Add, Bound, Mul, RangeBounds, RangeInclusive},
     path::Path,
     rc::Rc,
@@ -39,7 +40,7 @@ use std::{
 use str_util::StringFromBytes;
 use winit::{
     event::Event,
-    event_loop::{ControlFlow, EventLoopBuilder},
+    event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::WindowBuilder,
 };
 
@@ -435,6 +436,28 @@ fn main() -> Result<(), AError> {
                         app.controls.lmb_dragging = false;
                         app.controls.rmb_dragging = false;
                     }
+                    DroppedFile(fpath) => {
+                        let elp = elproxy.clone();
+                        platform::spawn_local(async move {
+                            let path = fpath.clone();
+                            let res = File::open(fpath).map_err(AError::from)
+                                .and_then(|ref mut file| {
+                                    load_model(file, Some(&path))
+                                });
+                            match res {
+                                Ok(loaded) => {
+                                    elp.send_event(loaded)
+                                        .expect("Could not send event");
+                                },
+                                Err(e) => {
+                                    elp.send_event(
+                                        AppEvent::ErrorMessage(e.to_string()))
+                                        .expect("Could not send event");
+                                },
+                            }
+                            ()
+                        });
+                    }
                     _ => (),
                 }
             }
@@ -731,45 +754,7 @@ fn main() -> Result<(), AError> {
                             ui.menu_button("File", |ui| {
                                 if ui.button("Open").clicked() {
                                     let elp = elproxy.clone();
-                                    platform::spawn_local(async move {
-let picker = AsyncFileDialog::new().add_filter("MD3", &["md3"]);
-if let Some(file_handle) = picker.pick_file().await {
-    let fpath = if cfg!(not(target_family = "wasm32")) {
-        Some(file_handle.path())
-    } else {
-        None
-    };
-    let fname = file_handle.file_name();
-    let fdata = file_handle.read().await;
-    let mut cursor = Cursor::new(&fdata);
-    if let Err(e) = md3::read_md3(&mut cursor).map_err(AError::from)
-        .with_context(|| format!("Error reading file {}", &fname))
-        .and_then(|model| {
-            let stuff: Vec<_> = model.surfaces.iter().filter_map(|surf| {
-                let vb = VertexBuffer::from_surface(surf);
-                let ib = IndexBuffer::from_surface(surf);
-                let texture = surf.shaders.get(0)
-                .zip(fpath).and_then(|(shader, fpath)| {
-                    let shader = String::from_utf8_stop(shader.name.as_slice());
-                    let fullpath = fpath.parent().unwrap().join(shader.as_ref());
-                    let fullpath = OsString::from(fullpath);
-                    Some(Cow::from(fullpath))
-                });
-                Some(ModelStuff {
-                    vb,
-                    ib,
-                    texture,
-                })
-            }).collect();
-            elp.send_event(AppEvent::LoadMD3 { model, stuff })
-                .expect("Could not send event");
-            Ok(())
-    }) {
-        elp.send_event(AppEvent::ErrorMessage(e.to_string()))
-            .expect("Could not send event");
-    }
-}
-});
+                                    platform::spawn_local(pick_and_load_model(elp));
                                     ui.close_menu();
                                 }
                                 if ui.button("Quit").clicked() {
@@ -970,4 +955,51 @@ where
     T: Mul<f32, Output = T> + Add<T, Output = T>,
 {
     a * (1. - f) + b * f
+}
+
+async fn pick_and_load_model(elp: EventLoopProxy<AppEvent>) -> () {
+    let picker = AsyncFileDialog::new().add_filter("MD3", &["md3"]);
+    if let Some(file_handle) = picker.pick_file().await {
+        let fpath = if cfg!(not(target_family = "wasm32")) {
+            Some(file_handle.path())
+        } else {
+            None
+        };
+        let fname = file_handle.file_name();
+        let fdata = file_handle.read().await;
+        let mut cursor = Cursor::new(&fdata);
+        match load_model(&mut cursor, fpath)
+            .with_context(|| format!("Error reading file {fname}")) {
+                Ok(loaded) => {
+                    elp.send_event(loaded).expect("Could not send event");
+                }
+                Err(e) => {
+                    elp.send_event(AppEvent::ErrorMessage(e.to_string()))
+                        .expect("Could not send event");
+                }
+        }
+    }
+}
+
+fn load_model(file: &mut (impl Read + Seek), fpath: Option<&Path>) -> Result<AppEvent, AError> {
+    md3::read_md3(file).map_err(AError::from)
+        .and_then(|model| {
+            let stuff: Vec<_> = model.surfaces.iter().filter_map(|surf| {
+                let vb = VertexBuffer::from_surface(surf);
+                let ib = IndexBuffer::from_surface(surf);
+                let texture = surf.shaders.get(0)
+                .zip(fpath).and_then(|(shader, fpath)| {
+                    let shader = String::from_utf8_stop(shader.name.as_slice());
+                    let fullpath = fpath.parent().unwrap().join(shader.as_ref());
+                    let fullpath = OsString::from(fullpath);
+                    Some(Cow::from(fullpath))
+                });
+                Some(ModelStuff {
+                    vb,
+                    ib,
+                    texture,
+                })
+            }).collect();
+            Ok(AppEvent::LoadMD3 { model, stuff })
+    })
 }

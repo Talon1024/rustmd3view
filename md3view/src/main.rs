@@ -157,7 +157,6 @@ struct App {
     frame_range: Option<RangeInclusive<f32>>,
     error_log: Option<String>,
     models: Vec<BasicModel<u32, UniformsMD3, UniformsMD3Locations>>,
-    axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
     tag_axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
     camera: OrbitCamera,
     controls: AppControls,

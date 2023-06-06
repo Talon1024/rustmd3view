@@ -146,6 +146,7 @@ struct AppControls {
     rmb_dragging: bool,
     view_mode: ViewMode,
     gzdoom_normals: bool,
+    snap_frame_to_integer: bool,
 }
 
 struct App {
@@ -807,6 +808,9 @@ if let Some(file_handle) = picker.pick_file().await {
                                 {
                                     ui.close_menu();
                                 }
+                                if ui.checkbox(&mut app.controls.snap_frame_to_integer, "Snap animation frame to integers").clicked() {
+                                    ui.close_menu();
+                                }
                             });
                         });
                     });
@@ -818,33 +822,40 @@ if let Some(file_handle) = picker.pick_file().await {
                         // let time = (Instant::now() - app_start).as_secs_f32();
                         match app.frame_range {
                             Some(ref range) => {
-                                ui.horizontal(|ui| {
-                                    if ui.button(play_button_text).clicked() {
-                                        app.anim_playing = !app.anim_playing;
-                                        if app.anim_playing {
-                                            app.anim_start_time = Instant::now();
-                                            app.anim_start_frame = app.current_frame;
-                                        }
-                                    }
-                                    if app.anim_playing {
-                                        app.current_frame = if let Bound::Included(&fc) =
-                                            range.end_bound()
-                                        {
-                                            ((Instant::now() - app.anim_start_time).as_secs_f32()
-                                                + app.anim_start_frame)
-                                                % fc
-                                        } else {
-                                            0.
-                                        };
-                                    }
-                                    ui.spacing_mut().slider_width = 400.;
-                                    ui.add(egui::Slider::new(
-                                        &mut app.current_frame,
-                                        range.clone(),
-                                    ));
-                                });
+ui.horizontal(|ui| {
+    if ui.button(play_button_text).clicked() {
+        app.anim_playing = !app.anim_playing;
+        if app.anim_playing {
+            app.anim_start_time = Instant::now();
+            app.anim_start_frame = if !app.controls.snap_frame_to_integer {
+                app.current_frame
+            } else {
+                app.current_frame.floor()
+            };
+        }
+    }
+    if app.anim_playing {
+        app.current_frame = {
+            if let Bound::Included(&frame_count) = range.end_bound() {
+                let elapsed = Instant::now() - app.anim_start_time;
+                (if !app.controls.snap_frame_to_integer {
+                    elapsed.as_secs_f32()
+                } else {
+                    elapsed.as_secs() as f32
+                } + app.anim_start_frame) % frame_count
+            } else {
+                0.
+            }
+        };
+    }
+    ui.spacing_mut().slider_width = 400.;
+    ui.add(egui::Slider::new(&mut app.current_frame, range.clone(),)
+        .step_by(if !app.controls.snap_frame_to_integer {0.0} else {1.0}));
+});
                             }
-                            None => (),
+                            None => {
+                                ui.label("No animation");
+                            },
                         }
                     });
                     let error_window = egui::Window::new("Error")

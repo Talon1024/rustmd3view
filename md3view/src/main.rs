@@ -184,18 +184,6 @@ impl App {
             frame_range: None,
             error_log: None,
             models: vec![],
-            axes: BasicModel {
-                vertex: VertexBuffer::new(
-                    Arc::clone(glc),
-                    Box::new(res::AXES_V),
-                ),
-                index: IndexBuffer::new(
-                    Arc::clone(glc),
-                    Vec::from(res::AXES_I),
-                ),
-                shader: Rc::clone(&axes_shader),
-                uniforms: UniformsRes::default(),
-            },
             tag_axes: BasicModel {
                 vertex: VertexBuffer::new(
                     Arc::clone(glc),

@@ -151,14 +151,14 @@ struct AppControls {
 }
 
 struct App {
-    model_data: Option<Box<MD3Model>>,
+    md3_data: Vec<MD3Model>,
     current_frame: f32,
     anim_playing: bool,
     anim_start_time: Instant,
     anim_start_frame: f32,
     frame_range: Option<RangeInclusive<f32>>,
     error_log: Option<String>,
-    models: Vec<BasicModel<u32, UniformsMD3, UniformsMD3Locations>>,
+    models: Vec<Vec<BasicModel<u32, UniformsMD3, UniformsMD3Locations>>>,
     tag_axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
     camera: OrbitCamera,
     controls: AppControls,
@@ -178,7 +178,7 @@ impl App {
             Rc::new(sp)
         };
         App {
-            model_data: None,
+            md3_data: vec![],
             current_frame: 0.,
             anim_playing: false,
             anim_start_time: Instant::now(),
@@ -503,10 +503,10 @@ fn main() -> Result<(), AError> {
                         app.texture_cache.clear();
                         app.anim_playing = false;
                         app.current_frame = 0.;
-                        app.model_data = Some(Box::new(model));
-                        app.camera.distance = app.model_data.as_ref().unwrap().max_radius() * 2.;
-                        app.models = stuff.into_iter()
-                        .zip(app.model_data.as_ref().unwrap().surfaces.iter())
+                        app.md3_data = vec![model];
+                        app.camera.distance = app.md3_data.get(0).unwrap().max_radius() * 2.;
+                        app.models = vec![stuff.into_iter()
+                        .zip(app.md3_data.get(0).unwrap().surfaces.iter())
                         .filter_map(|(data, surf)| {
                             let (anim, rows_per_frame) = Texture::try_from_md3(Arc::clone(&glc), surf)
                             .map_err(|e| {
@@ -539,19 +539,19 @@ fn main() -> Result<(), AError> {
                                     rowsPerFrame: rows_per_frame as i32,
                                 }
                             })
-                        }).collect()
+                        }).collect()]
                     },
                     AppEvent::LoadTextureReplacement { name, image } => {
                         match app.texture_cache.set(Arc::clone(&glc), name.clone(), image) {
                             Ok(t) => {
-                                if let Some(model) = &app.model_data {
+                                if let Some(model) = app.md3_data.get(0) {
                                     let replace_texture_on_surface: Vec<bool> = model.surfaces.iter().map(|m| {
                                         m.shaders.iter().any(|sdr| String::from_utf8_stop(&sdr.name) == name)
                                         || (name == BLANK_SURFACE_SHADER_NAME && m.shaders.is_empty())
                                     }).collect();
                                     replace_texture_on_surface.iter().enumerate().for_each(|(index, &y)| {
                                         if y {
-                                            app.models[index].uniforms.tex = Rc::clone(&t);
+                                            app.models[0][index].uniforms.tex = Rc::clone(&t);
                                         }
                                     })
                                 }
@@ -567,7 +567,7 @@ fn main() -> Result<(), AError> {
                     },
                     AppEvent::LoadSurfaceTextureReplacement { surface_index, image } => {
                         if let Ok(tex) = Texture::try_from_surface(Arc::clone(&glc), &image) {
-                            if let Some(model) = app.models.get_mut(surface_index) {
+                            if let Some(model) = app.models[0].get_mut(surface_index) {
                                 model.uniforms.tex = Rc::new(tex);
                             }
                         }
@@ -595,22 +595,24 @@ fn main() -> Result<(), AError> {
                     glc.enable(glow::CULL_FACE);
                     glc.cull_face(glow::BACK);
                 }
-                app.models.iter_mut().for_each(|model| {
-                    if let Err(e) = model.render(&glc, |uniforms| {
-                        uniforms.eye = app.camera.view_projection() * md3_model_matrix;
-                        uniforms.frame = app.current_frame;
-                        uniforms.mode = app.controls.view_mode as u32;
-                        uniforms.gzdoom = app.controls.gzdoom_normals;
-                    }) {
-                        eprintln!("{:?}", e);
-                    }
+                app.models.iter_mut().for_each(|submodels| {
+                    submodels.iter_mut().for_each(|model| {
+                        if let Err(e) = model.render(&glc, |uniforms| {
+                            uniforms.eye = app.camera.view_projection() * md3_model_matrix;
+                            uniforms.frame = app.current_frame;
+                            uniforms.mode = app.controls.view_mode as u32;
+                            uniforms.gzdoom = app.controls.gzdoom_normals;
+                        }) {
+                            eprintln!("{:?}", e);
+                        }
+                    });
                 });
 
                 // DRAW TAG AXES
                 // ==================================================================
 
                 app.tag_axes.shader.activate().unwrap();
-                if let Some(model) = app.model_data.as_ref() {
+                if let Some(model) = app.md3_data.get(0) {
                     let current_frame = app.current_frame.floor() as usize;
                     let next_frame = app.current_frame.ceil() as usize;
                     let lerp_factor = app.current_frame.fract();
@@ -870,7 +872,7 @@ ui.horizontal(|ui| {
                         }
                     }
                     egui::SidePanel::right("infoz").show(ctx, |ui| {
-                        if let Some(model) = app.model_data.as_ref() {
+                        if let Some(model) = app.md3_data.get(0) {
                             ui.heading("Shaders");
                             model.surfaces.iter().enumerate().for_each(|(index, surf)| {
                                 egui::CollapsingHeader::new(format!("Surface {}", index)).show(
@@ -909,7 +911,7 @@ ui.horizontal(|ui| {
                         order: Order::Foreground,
                         id: Id::new("tag_name_overlays"),
                     });
-                    if let Some(model) = app.model_data.as_ref() {
+                    if let Some(model) = app.md3_data.get(0) {
                         let current_frame = app.current_frame.floor() as usize;
                         let next_frame = app.current_frame.ceil() as usize;
                         let lerp_factor = app.current_frame.fract();

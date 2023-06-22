@@ -317,6 +317,10 @@ enum AppEvent {
         name: String,
         image: Surface
     },
+    LoadSurfaceTextureReplacement {
+        surface_index: usize,
+        image: Surface
+    },
     ErrorMessage(String),
 }
 
@@ -561,6 +565,13 @@ fn main() -> Result<(), AError> {
                             },
                         }
                     },
+                    AppEvent::LoadSurfaceTextureReplacement { surface_index, image } => {
+                        if let Ok(tex) = Texture::try_from_surface(Arc::clone(&glc), &image) {
+                            if let Some(model) = app.models.get_mut(surface_index) {
+                                model.uniforms.tex = Rc::new(tex);
+                            }
+                        }
+                    }
                     AppEvent::ErrorMessage(e) => {
                         let el = app.error_log.get_or_insert(String::new());
                         if !el.is_empty() {
@@ -859,8 +870,8 @@ ui.horizontal(|ui| {
                         }
                     }
                     egui::SidePanel::right("infoz").show(ctx, |ui| {
-                        ui.heading("Shaders");
                         if let Some(model) = app.model_data.as_ref() {
+                            ui.heading("Shaders");
                             model.surfaces.iter().enumerate().for_each(|(index, surf)| {
                                 egui::CollapsingHeader::new(format!("Surface {}", index)).show(
                                     ui,
@@ -876,27 +887,16 @@ ui.horizontal(|ui| {
                                         if ui.button("Replace texture").clicked() {
                                             // Need surface index and new texture
                                             let elp = elproxy.clone();
+                                            platform::spawn_local(pick_and_load_surface_texture(elp, index));
+                                        }
+                                        if ui.button("Replace texture (global)").clicked() {
+                                            // Need surface index and new texture
+                                            let elp = elproxy.clone();
                                             let sdr_name = surf.shaders.iter()
                                                 .next().map(|sdr| String::from_utf8_stop(&sdr.name))
                                                 .unwrap_or(Cow::from(BLANK_SURFACE_SHADER_NAME))
                                                 .to_string();
-                                            platform::spawn_local(async move {
-                                                let file_handle = AsyncFileDialog::new()
-                                                    .add_filter("Image", &["png", "jpg", "tga", "pcx", "dds"])
-                                                    .pick_file()
-                                                    .await;
-                                                if let Some(file_handle) = file_handle {
-                                                    let file_data = Cursor::new(file_handle.read().await);
-                                                    match Surface::read_image_data(file_data) {
-                                                        Ok(image) => {
-                                                            elp.send_event(AppEvent::LoadTextureReplacement { name: sdr_name, image }).expect("Could not send event");
-                                                        },
-                                                        Err(e) => {
-                                                            elp.send_event(AppEvent::ErrorMessage(e.to_string())).expect("Could not send event");
-                                                        },
-                                                    }
-                                                }
-                                            });
+                                            platform::spawn_local(pick_and_load_texture(elp, sdr_name));
                                         }
                                     },
                                 );
@@ -955,6 +955,42 @@ where
     T: Mul<f32, Output = T> + Add<T, Output = T>,
 {
     a * (1. - f) + b * f
+}
+
+async fn pick_and_load_surface_texture(elp: EventLoopProxy<AppEvent>, surface_index: usize) -> () {
+    let file_handle = AsyncFileDialog::new()
+        .add_filter("Image", &["png", "jpg", "tga", "pcx", "dds"])
+        .pick_file()
+        .await;
+    if let Some(file_handle) = file_handle {
+        let file_data = Cursor::new(file_handle.read().await);
+        match Surface::read_image_data(file_data) {
+            Ok(image) => {
+                elp.send_event(AppEvent::LoadSurfaceTextureReplacement { surface_index, image }).expect("Could not send event");
+            },
+            Err(e) => {
+                elp.send_event(AppEvent::ErrorMessage(e.to_string())).expect("Could not send event");
+            },
+        }
+    }
+}
+
+async fn pick_and_load_texture(elp: EventLoopProxy<AppEvent>, sdr_name: String) -> () {
+    let file_handle = AsyncFileDialog::new()
+        .add_filter("Image", &["png", "jpg", "tga", "pcx", "dds"])
+        .pick_file()
+        .await;
+    if let Some(file_handle) = file_handle {
+        let file_data = Cursor::new(file_handle.read().await);
+        match Surface::read_image_data(file_data) {
+            Ok(image) => {
+                elp.send_event(AppEvent::LoadTextureReplacement { name: sdr_name, image }).expect("Could not send event");
+            },
+            Err(e) => {
+                elp.send_event(AppEvent::ErrorMessage(e.to_string())).expect("Could not send event");
+            },
+        }
+    }
 }
 
 async fn pick_and_load_model(elp: EventLoopProxy<AppEvent>) -> () {

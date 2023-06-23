@@ -159,6 +159,7 @@ struct App {
     frame_range: Option<RangeInclusive<f32>>,
     error_log: Option<String>,
     models: Vec<Vec<BasicModel<u32, UniformsMD3, UniformsMD3Locations>>>,
+    attachments: Vec<String>, // Only for attached models
     tag_axes: BasicModel<u8, UniformsRes, UniformsResLocations>,
     camera: OrbitCamera,
     controls: AppControls,
@@ -186,6 +187,7 @@ impl App {
             frame_range: None,
             error_log: None,
             models: vec![],
+            attachments: vec![],
             tag_axes: BasicModel {
                 vertex: VertexBuffer::new(
                     Arc::clone(glc),
@@ -301,6 +303,12 @@ const LOOK_LIMIT: f32 = {
 const BLANK_SURFACE_SHADER_NAME: &str = "_____blank_____";
 
 #[derive(Debug)]
+struct ModelAndStuff {
+    model: MD3Model,
+    stuff: Vec<ModelStuff>,
+}
+
+#[derive(Debug)]
 struct ModelStuff {
     vb: Vec<VertexMD3>,
     ib: Vec<u32>,
@@ -309,10 +317,7 @@ struct ModelStuff {
 
 #[derive(Debug)]
 enum AppEvent {
-    LoadMD3 {
-        model: MD3Model,
-        stuff: Vec<ModelStuff>,
-    },
+    LoadMD3 (ModelAndStuff),
     LoadTextureReplacement {
         name: String,
         image: Surface
@@ -320,6 +325,10 @@ enum AppEvent {
     LoadSurfaceTextureReplacement {
         surface_index: usize,
         image: Surface
+    },
+    LoadAttachment {
+        tag_name: String,
+        model_and_stuff: ModelAndStuff,
     },
     ErrorMessage(String),
 }
@@ -398,7 +407,6 @@ fn main() -> Result<(), AError> {
         }).collect()
     }; */
     // For testing
-
     el.run(move |event, _window, control_flow| {
         match event {
             Event::WindowEvent {
@@ -450,7 +458,8 @@ fn main() -> Result<(), AError> {
                                 });
                             match res {
                                 Ok(loaded) => {
-                                    elp.send_event(loaded)
+                                    let event = AppEvent::LoadMD3(loaded);
+                                    elp.send_event(event)
                                         .expect("Could not send event");
                                 },
                                 Err(e) => {
@@ -492,7 +501,8 @@ fn main() -> Result<(), AError> {
             }
             Event::UserEvent(app_event) => {
                 match app_event {
-                    AppEvent::LoadMD3 {model, stuff} => {
+                    AppEvent::LoadMD3(model_and_stuff) => {
+                        let ModelAndStuff { model, stuff } = model_and_stuff;
                         let elp = elproxy.clone();
                         let num_frames = model.frames.len();
                         app.frame_range = if num_frames > 1 {
@@ -505,6 +515,7 @@ fn main() -> Result<(), AError> {
                         app.current_frame = 0.;
                         app.md3_data = vec![model];
                         app.camera.distance = app.md3_data.get(0).unwrap().max_radius() * 2.;
+                        app.attachments = vec![];
                         app.models = vec![stuff.into_iter()
                         .zip(app.md3_data.get(0).unwrap().surfaces.iter())
                         .filter_map(|(data, surf)| {
@@ -532,10 +543,10 @@ fn main() -> Result<(), AError> {
                                         texture
                                     },
                                     anim,
-                                    gzdoom: Default::default(),
-                                    eye: Default::default(),
-                                    frame: Default::default(),
-                                    mode: Default::default(),
+                                    gzdoom: app.controls.gzdoom_normals,
+                                    eye: app.camera.view_projection() * md3_model_matrix,
+                                    frame: app.current_frame,
+                                    mode: app.controls.view_mode as u32,
                                     rowsPerFrame: rows_per_frame as i32,
                                 }
                             })
@@ -571,6 +582,54 @@ fn main() -> Result<(), AError> {
                                 model.uniforms.tex = Rc::new(tex);
                             }
                         }
+                    },
+                    AppEvent::LoadAttachment { tag_name, model_and_stuff } => {
+                        let ModelAndStuff { model, stuff } = model_and_stuff;
+                        let models = model.surfaces.iter().zip(stuff.into_iter())
+                        .filter_map(|(surf, stuff)| {
+                            let vertex = VertexBuffer::new(Arc::clone(&glc), stuff.vb.into_boxed_slice());
+                            let index = IndexBuffer::new(Arc::clone(&glc), stuff.ib);
+                            let (anim, rows_per_frame) = Texture::try_from_md3(Arc::clone(&glc), surf)
+                            .map_err(|e| {
+                                elproxy.send_event(
+                                    AppEvent::ErrorMessage(e.to_string()))
+                                    .expect("Could not send event");
+                            }).ok()?;
+                            let texture_name = surf.shaders.get(0).and_then(|sdr| Some(String::from_utf8_stop(&sdr.name)))
+                            .unwrap_or(BLANK_SURFACE_SHADER_NAME);
+                            let (tex, err) = app.texture_cache.get(Arc::clone(&glc), &texture_name);
+                            if let Some(err) = err {
+                                elproxy.send_event(AppEvent::ErrorMessage(err.to_string()))
+                                .expect("Could not send event");
+                            }
+                            Some(BasicModel {
+                                vertex,
+                                index,
+                                shader: Rc::clone(&md3_shader),
+                                uniforms: UniformsMD3 {
+                                    gzdoom: app.controls.gzdoom_normals,
+                                    anim: Rc::new(anim),
+                                    eye: app.camera.view_projection() * md3_model_matrix,
+                                    frame: app.current_frame,
+                                    mode: app.controls.view_mode as u32,
+                                    tex,
+                                    rowsPerFrame: rows_per_frame as i32,
+                                },
+                            })
+                        }).collect();
+                        app.md3_data.push(model);
+
+                        let attach_index = app.attachments.iter().position(
+                            |tag| tag == &tag_name);
+                        let replace = attach_index.is_some();
+                        if replace {
+                            // The "models" array is one larger than the "attachments" array
+                            let model_index = attach_index.unwrap() + 1;
+                            *app.models.get_mut(model_index).unwrap() = models;
+                        } else {
+                            app.models.push(models);
+                        }
+                        app.attachments.push(tag_name);
                     }
                     AppEvent::ErrorMessage(e) => {
                         let el = app.error_log.get_or_insert(String::new());
@@ -611,7 +670,7 @@ fn main() -> Result<(), AError> {
                 // DRAW TAG AXES
                 // ==================================================================
 
-                app.tag_axes.shader.activate().unwrap();
+                
                 if let Some(model) = app.md3_data.get(0) {
                     let current_frame = app.current_frame.floor() as usize;
                     let next_frame = app.current_frame.ceil() as usize;
@@ -622,19 +681,41 @@ fn main() -> Result<(), AError> {
                         let tag_b = tag_index + num_tags * next_frame;
                         let tag_a = &model.tags[tag_a];
                         let tag_b = &model.tags[tag_b];
+                        let tag_name = String::from_utf8_stop(&tag_a.name);
+                        let tag_attachment = app.attachments.iter().position(|p| p == tag_name).map(|i| i + 1);
+                        println!("attachment: {tag_name} {tag_attachment:?}");
                         let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
                         let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
-                        let tag_distance =
-                            (app.camera.position(None) * md3_model_scale).distance(tag_origin) / 256.;
+                        let tag_distance = if tag_attachment.is_none() {
+                            // Render at same size regardless of distance
+                            (app.camera.position(None) * md3_model_scale)
+                            .distance(tag_origin) / 256.
+                        } else {
+                            1.
+                        };
                         let mvp = app.camera.view_projection()
                             * md3_model_matrix
                             * Affine3A::from_mat3_translation(tag_axes, tag_origin)
                             * Mat4::from_scale(Vec3::splat(tag_distance));
 
-                        if let Err(e) = app.tag_axes.render(&glc, |uniforms| {
-                            uniforms.eye = mvp;
-                            uniforms.shaded = true;
-                        }) {
+                        if let Err(e) = match tag_attachment {
+                            Some(index) => {
+                                app.models[index].iter_mut().map(|bm| {
+                                    bm.render(&glc, |uniforms| {
+                                        uniforms.gzdoom = app.controls.gzdoom_normals;
+                                        uniforms.eye = mvp;
+                                        uniforms.frame = app.current_frame;
+                                        uniforms.mode = app.controls.view_mode as u32;
+                                    })
+                                }).collect()
+                            },
+                            None => {
+                                app.tag_axes.render(&glc, |uniforms| {
+                                    uniforms.eye = mvp;
+                                    uniforms.shaded = true;
+                                })
+                            }
+                        } {
                             eprintln!("{:?}", e);
                         }
                     });
@@ -896,13 +977,33 @@ ui.horizontal(|ui| {
                                             let elp = elproxy.clone();
                                             let sdr_name = surf.shaders.iter()
                                                 .next().map(|sdr| String::from_utf8_stop(&sdr.name))
-                                                .unwrap_or(Cow::from(BLANK_SURFACE_SHADER_NAME))
+                                                .unwrap_or(BLANK_SURFACE_SHADER_NAME)
                                                 .to_string();
                                             platform::spawn_local(pick_and_load_texture(elp, sdr_name));
                                         }
                                     },
                                 );
                             });
+                            ui.add(egui::Separator::default().spacing(50.));
+                            if model.num_tags > 0 {
+                            let text_style = ui.style().override_text_style.clone();
+                            ui.style_mut().override_text_style = Some(egui::TextStyle::Heading);
+                            egui::CollapsingHeader::new("Tags")
+                            .show(ui, |ui| {
+                                ui.style_mut().override_text_style = text_style;
+                                model.tags.iter().take(model.num_tags)
+                                .for_each(|tag| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(String::from_utf8_stop(&tag.name));
+                                        if ui.button("Attach model").clicked() {
+                                            let tag_name = String::from_utf8_stop(&tag.name).to_string();
+                                            let elp = elproxy.clone();
+                                            platform::spawn_local(pick_and_load_attachment(elp, tag_name));
+                                        }
+                                    });
+                                });
+                            });
+                            }
                         }
                     });
                     // DRAW TAG NAMES AT TAG POSITIONS
@@ -959,6 +1060,28 @@ where
     a * (1. - f) + b * f
 }
 
+async fn pick_and_load_attachment(elp: EventLoopProxy<AppEvent>, tag_name: String) -> () {
+    let file_handle = AsyncFileDialog::new()
+        .add_filter("MD3", &["md3"])
+        .pick_file()
+        .await;
+    if let Some(file_handle) = file_handle {
+        let mut file_data = Cursor::new(file_handle.read().await);
+        match load_model(&mut file_data, Some(file_handle.path())) {
+            Ok(md3) => {
+                elp.send_event(AppEvent::LoadAttachment {
+                    tag_name,
+                    model_and_stuff: md3
+                }).expect("Could not send event");
+            },
+            Err(e) => {
+                elp.send_event(AppEvent::ErrorMessage(e.to_string()))
+                    .expect("Could not send event");
+            },
+        }
+    }
+}
+
 async fn pick_and_load_surface_texture(elp: EventLoopProxy<AppEvent>, surface_index: usize) -> () {
     let file_handle = AsyncFileDialog::new()
         .add_filter("Image", &["png", "jpg", "tga", "pcx", "dds"])
@@ -1009,7 +1132,8 @@ async fn pick_and_load_model(elp: EventLoopProxy<AppEvent>) -> () {
         match load_model(&mut cursor, fpath)
             .with_context(|| format!("Error reading file {fname}")) {
                 Ok(loaded) => {
-                    elp.send_event(loaded).expect("Could not send event");
+                    let event = AppEvent::LoadMD3(loaded);
+                    elp.send_event(event).expect("Could not send event");
                 }
                 Err(e) => {
                     elp.send_event(AppEvent::ErrorMessage(e.to_string()))
@@ -1019,7 +1143,7 @@ async fn pick_and_load_model(elp: EventLoopProxy<AppEvent>) -> () {
     }
 }
 
-fn load_model(file: &mut (impl Read + Seek), fpath: Option<&Path>) -> Result<AppEvent, AError> {
+fn load_model(file: &mut (impl Read + Seek), fpath: Option<&Path>) -> Result<ModelAndStuff, AError> {
     md3::read_md3(file).map_err(AError::from)
         .and_then(|model| {
             let stuff: Vec<_> = model.surfaces.iter().filter_map(|surf| {
@@ -1027,8 +1151,8 @@ fn load_model(file: &mut (impl Read + Seek), fpath: Option<&Path>) -> Result<App
                 let ib = IndexBuffer::from_surface(surf);
                 let texture = surf.shaders.get(0)
                 .zip(fpath).and_then(|(shader, fpath)| {
-                    let shader = String::from_utf8_stop(shader.name.as_slice());
-                    let fullpath = fpath.parent().unwrap().join(shader.as_ref());
+                    let shader = String::from_utf8_stop(&shader.name);
+                    let fullpath = fpath.parent().unwrap().join(shader);
                     let fullpath = OsString::from(fullpath);
                     Some(Cow::from(fullpath))
                 });
@@ -1038,6 +1162,6 @@ fn load_model(file: &mut (impl Read + Seek), fpath: Option<&Path>) -> Result<App
                     texture,
                 })
             }).collect();
-            Ok(AppEvent::LoadMD3 { model, stuff })
+            Ok(ModelAndStuff { model, stuff })
     })
 }

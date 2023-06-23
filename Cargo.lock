@@ -448,50 +448,50 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "ecolor"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f99fe3cac305af9d6d92971af60d0f7ea4d783201ef1673571567b6699964d9"
+checksum = "2e479a7fa3f23d4e794f8b2f8b3568dd4e47886ad1b12c9c095e141cb591eb63"
 dependencies = [
  "bytemuck",
 ]
 
 [[package]]
 name = "egui"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6412a21e0bde7c0918f7fb44bbbb86b5e1f88e63c026a4e747cc7af02f76dfbe"
+checksum = "a3aef8ec3ae1b772f340170c65bf27d5b8c28f543a0116c844d2ac08d01123e7"
 dependencies = [
  "ahash",
  "epaint",
+ "log",
  "nohash-hasher",
- "tracing",
 ]
 
 [[package]]
 name = "egui-winit"
-version = "0.21.1"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab43597ba41f0ce39a364ad83185594578bfd8b3409b99dbcbb01df23afc3dbb"
+checksum = "4a49155fd4a0a4fb21224407a91de0030847972ef90fc64edb63621caea61cb2"
 dependencies = [
- "android-activity",
  "egui",
  "instant",
- "tracing",
+ "log",
+ "raw-window-handle",
  "winit",
 ]
 
 [[package]]
 name = "egui_glow"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8257332fb168a965b3dca81d6a344e053153773c889cabdba0b3b76f1629ae81"
+checksum = "1f8c2752cdf1b0ef5fcda59a898cacabad974d4f5880e92a420b2c917022da64"
 dependencies = [
  "bytemuck",
  "egui",
  "egui-winit",
  "glow",
+ "log",
  "memoffset 0.6.5",
- "tracing",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -504,18 +504,18 @@ checksum = "90e5c1c8368803113bf0c9584fc495a58b86dc8a29edbf8fe877d21d9507e797"
 
 [[package]]
 name = "emath"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8ecd80612937e0267909d5351770fe150004e24dab93954f69ca62eecd3f77e"
+checksum = "3857d743a6e0741cdd60b622a74c7a36ea75f5f8f11b793b41d905d2c9721a4b"
 dependencies = [
  "bytemuck",
 ]
 
 [[package]]
 name = "epaint"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12e78b5c58a1f7f621f9d546add2adce20636422c9b251e29f749e8a2f713c95"
+checksum = "09333964d4d57f40a85338ba3ca5ed4716070ab184dcfed966b35491c5c64f3b"
 dependencies = [
  "ab_glyph",
  "ahash",
@@ -523,6 +523,7 @@ dependencies = [
  "bytemuck",
  "ecolor",
  "emath",
+ "log",
  "nohash-hasher",
  "parking_lot",
 ]
@@ -1878,26 +1879,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d82e1a7758622a465f8cee077614c73484dac5b836c02ff6a40d5d1010324d7"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "tracing"
-version = "0.1.37"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ce8c33a8d48bd45d624a6e523445fd21ec13d3653cd51f681abf67418f54eb8"
-dependencies = [
- "cfg-if",
- "pin-project-lite",
- "tracing-core",
-]
-
-[[package]]
-name = "tracing-core"
-version = "0.1.30"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24eb03ba0eab1fd845050058ce5e616558e8f8d8fca633e6b163fe25c797213a"
-dependencies = [
- "once_cell",
 ]
 
 [[package]]

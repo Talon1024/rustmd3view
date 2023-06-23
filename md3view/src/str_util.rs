@@ -1,18 +1,18 @@
-use std::{borrow::Cow, mem};
+use std::mem;
 
 pub trait StringFromBytes {
     /// Convert a byte slice to a string, starting at the first valid character,
     /// and stopping at the first invalid character.
-    fn from_utf8_stop(bytes: &[u8]) -> Cow<'_, str>;
+    fn from_utf8_stop(bytes: &[u8]) -> &str;
 }
 
 impl StringFromBytes for String {
-    fn from_utf8_stop(bytes: &[u8]) -> Cow<'_, str> {
+    fn from_utf8_stop(bytes: &[u8]) -> &str {
         // TODO: Use Utf8Chunks API when it's stable
         let valid = |b: &u8| b.is_ascii() && !b.is_ascii_control();
         let first_valid = bytes.iter().position(valid);
         if let None = first_valid {
-            return Cow::Borrowed("");
+            return "";
         }
         let first_valid = first_valid.unwrap();
         let first_invalid =
@@ -23,7 +23,7 @@ impl StringFromBytes for String {
         };
         let valid_slice =
             unsafe { mem::transmute(&bytes[first_valid..last_valid]) };
-        Cow::Borrowed(valid_slice)
+        valid_slice
     }
 }
 

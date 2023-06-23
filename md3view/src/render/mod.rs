@@ -919,7 +919,7 @@ pub struct BasicModel<I, U, L>
 where
     I: IndexInteger + Pod,
     U: ShaderUniforms<L>,
-    L: ShaderUniformLocations + Default,
+    L: ShaderUniformLocations,
 {
     pub vertex: VertexBuffer,
     pub index: IndexBuffer<I>,
@@ -931,7 +931,7 @@ impl<I, U, L> BasicModel<I, U, L>
 where
     I: IndexInteger + Pod,
     U: ShaderUniforms<L>,
-    L: ShaderUniformLocations + Default,
+    L: ShaderUniformLocations,
 {
     pub fn render<F>(
         &mut self,

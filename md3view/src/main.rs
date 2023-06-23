@@ -628,8 +628,8 @@ fn main() -> Result<(), AError> {
                             *app.models.get_mut(model_index).unwrap() = models;
                         } else {
                             app.models.push(models);
+                            app.attachments.push(tag_name);
                         }
-                        app.attachments.push(tag_name);
                     }
                     AppEvent::ErrorMessage(e) => {
                         let el = app.error_log.get_or_insert(String::new());
@@ -654,7 +654,8 @@ fn main() -> Result<(), AError> {
                     glc.enable(glow::CULL_FACE);
                     glc.cull_face(glow::BACK);
                 }
-                app.models.iter_mut().for_each(|submodels| {
+                // Only draw the first MD3 model and surfaces
+                app.models.get_mut(0).and_then(|submodels| {
                     submodels.iter_mut().for_each(|model| {
                         if let Err(e) = model.render(&glc, |uniforms| {
                             uniforms.eye = app.camera.view_projection() * md3_model_matrix;
@@ -665,6 +666,7 @@ fn main() -> Result<(), AError> {
                             eprintln!("{:?}", e);
                         }
                     });
+                    Some(())
                 });
 
                 // DRAW TAG AXES
@@ -683,7 +685,6 @@ fn main() -> Result<(), AError> {
                         let tag_b = &model.tags[tag_b];
                         let tag_name = String::from_utf8_stop(&tag_a.name);
                         let tag_attachment = app.attachments.iter().position(|p| p == tag_name).map(|i| i + 1);
-                        println!("attachment: {tag_name} {tag_attachment:?}");
                         let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
                         let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
                         let tag_distance = if tag_attachment.is_none() {

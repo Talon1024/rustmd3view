@@ -50,7 +50,7 @@ ivec2 indexToVertexLoc(uint index, int width, int frame) {
 }
 
 void main() {
-	int animWidth = textureSize(anim, 0).x;
+	ivec2 animSize = textureSize(anim, 0);
 	float interp = fract(frame);
 	// Which frames to use?
 	int framea = int(floor(frame));
@@ -60,8 +60,10 @@ void main() {
 	// rectangles, stacked vertically, containing the vertex position data as
 	// RGBA colours, which are converted into positions and normals by the
 	// toPosNorm function
-	ivec2 uva = indexToVertexLoc(aIndex, animWidth, framea);
-	ivec2 uvb = indexToVertexLoc(aIndex, animWidth, frameb);
+	ivec2 uva = indexToVertexLoc(aIndex, animSize.x, framea);
+	ivec2 uvb = indexToVertexLoc(aIndex, animSize.x, frameb);
+	uva.y %= animSize.y; // Prevent models from disappearing
+	uvb.y %= animSize.y;
 	ivec4 ia = texelFetch(anim, uva, 0);
 	ivec4 ib = texelFetch(anim, uvb, 0);
 	vec3[2] va = toPosNorm(ia);

@@ -1085,12 +1085,14 @@ async fn pick_and_load_attachment(elp: EventLoopProxy<AppEvent>, tag_name: Strin
 
 async fn pick_and_load_surface_texture(elp: EventLoopProxy<AppEvent>, surface_index: usize) -> () {
     let file_handle = AsyncFileDialog::new()
-        .add_filter("Image", &["png", "jpg", "tga", "pcx", "dds"])
+        .add_filter("Image", &["png", "jpg", "tga", "dds"])
         .pick_file()
         .await;
     if let Some(file_handle) = file_handle {
+        let suggestion = file_handle.path().extension()
+            .and_then(res::suggest_format_from_extension);
         let file_data = Cursor::new(file_handle.read().await);
-        match Surface::read_image_data(file_data) {
+        match Surface::read_image_data(file_data, suggestion) {
             Ok(image) => {
                 elp.send_event(AppEvent::LoadSurfaceTextureReplacement { surface_index, image }).expect("Could not send event");
             },
@@ -1103,12 +1105,14 @@ async fn pick_and_load_surface_texture(elp: EventLoopProxy<AppEvent>, surface_in
 
 async fn pick_and_load_texture(elp: EventLoopProxy<AppEvent>, sdr_name: String) -> () {
     let file_handle = AsyncFileDialog::new()
-        .add_filter("Image", &["png", "jpg", "tga", "pcx", "dds"])
+        .add_filter("Image", &["png", "jpg", "tga", "dds"])
         .pick_file()
         .await;
     if let Some(file_handle) = file_handle {
+        let suggestion = file_handle.path().extension()
+            .and_then(res::suggest_format_from_extension);
         let file_data = Cursor::new(file_handle.read().await);
-        match Surface::read_image_data(file_data) {
+        match Surface::read_image_data(file_data, suggestion) {
             Ok(image) => {
                 elp.send_event(AppEvent::LoadTextureReplacement { name: sdr_name, image }).expect("Could not send event");
             },

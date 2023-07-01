@@ -4,11 +4,12 @@ use anyhow::Error;
 use bytemuck::Pod;
 use futures::join;
 use glam::Vec3;
-use image::{io::Reader, DynamicImage::*, ImageBuffer, Pixel};
+use image::{io::Reader, DynamicImage::*, ImageBuffer, ImageFormat, Pixel};
 use std::{
     borrow::Cow,
     env,
     fs::File,
+    ffi::OsStr,
     io::{Cursor, BufReader, Read, Seek},
     ops::Deref,
     path::Path,
@@ -46,17 +47,36 @@ pub struct Surface {
     pub data: Box<[u8]>,
 }
 
+pub fn suggest_format_from_extension(extension: &OsStr) -> Option<ImageFormat> {
+    let extension = extension.to_str();
+    match extension {
+        Some("png") => Some(ImageFormat::Png),
+        Some("tga") => Some(ImageFormat::Tga),
+        Some("jpg") => Some(ImageFormat::Jpeg),
+        Some("dds") => Some(ImageFormat::Dds),
+        _ => None,
+    }
+}
+
 impl Surface {
     pub fn read_image_file(path: impl AsRef<Path>) -> Result<Surface, Error> {
+        let suggestion = path.as_ref().extension()
+            .and_then(suggest_format_from_extension);
         let file_reader = File::open(path)?;
-        Self::read_image_data(file_reader)
+        Self::read_image_data(file_reader, suggestion)
     }
     pub fn read_image_data(
         image_data: impl Read + Seek,
+        suggested_format: Option<ImageFormat>,
     ) -> Result<Surface, Error> {
         use SurfaceType::*;
         let reader = BufReader::new(image_data);
-        let image = Reader::new(reader).with_guessed_format()?.decode()?;
+        let mut image = Reader::new(reader);
+        let image = match suggested_format {
+            Some(fmt) => {image.set_format(fmt); image},
+            None => image.with_guessed_format()?,
+        };
+        let image = image.decode()?;
 
         fn to_surface<P: Pixel, T>(
             buf: ImageBuffer<P, T>,
@@ -130,9 +150,26 @@ impl AppResources {
         let lines_vertex_shader = platform::load_asset(path.join("lines.vert").to_string_lossy().to_string());
         let lines_pixel_shader = platform::load_asset(path.join("lines.frag").to_string_lossy().to_string());
 
-        let (null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader, lines_vertex_shader, lines_pixel_shader) = join!(null_texture, md3_vertex_shader, md3_pixel_shader, res_vertex_shader, res_pixel_shader, lines_vertex_shader, lines_pixel_shader);
+        // Async loading
+        let (
+            null_texture,
+            md3_vertex_shader,
+            md3_pixel_shader,
+            res_vertex_shader,
+            res_pixel_shader,
+            lines_vertex_shader,
+            lines_pixel_shader
+        ) = join!(
+            null_texture,
+            md3_vertex_shader,
+            md3_pixel_shader,
+            res_vertex_shader,
+            res_pixel_shader,
+            lines_vertex_shader,
+            lines_pixel_shader
+        );
 
-        let null_texture = Surface::read_image_data(Cursor::new(null_texture.unwrap())).unwrap();
+        let null_texture = Surface::read_image_data(Cursor::new(null_texture.unwrap()), Some(ImageFormat::Png)).unwrap();
         let md3_vertex_shader = String::from_utf8(md3_vertex_shader.unwrap()).unwrap();
         let md3_pixel_shader = String::from_utf8(md3_pixel_shader.unwrap()).unwrap();
         let res_pixel_shader = String::from_utf8(res_pixel_shader.unwrap()).unwrap();

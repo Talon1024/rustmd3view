@@ -5,7 +5,7 @@ use crate::res::{Surface, SurfaceType, AppResources};
 use anyhow::Error as AError;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec2, Vec3, Vec4};
-use glow::{Context, HasContext};
+use glow::{Context, HasContext, UniformLocation};
 use once_cell::race::OnceBox;
 use std::{
     marker::PhantomData,
@@ -19,9 +19,125 @@ type GLUniformLocation = <Context as HasContext>::UniformLocation;
 
 // #[macro_use]
 // mod macros;
-pub trait InterleavedVertexAttribute : Sized {
+pub trait InterleavedVertexAttributes : Sized {
     unsafe fn setup_vertex_attrs(glc: &Context);
     const STRIDE: i32 = mem::size_of::<Self>() as i32;
+}
+
+trait VertexAttribute : Sized {
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32;
+}
+
+impl VertexAttribute for u32 {
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32 {
+        glc.vertex_attrib_pointer_i32(
+            attrib_index,
+            1,
+            glow::UNSIGNED_INT,
+            stride,
+            offset,
+        );
+        glc.enable_vertex_attrib_array(attrib_index);
+        mem::size_of::<Self>() as i32
+    }
+}
+
+impl VertexAttribute for Vec2 {
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32 {
+        glc.vertex_attrib_pointer_f32(
+            attrib_index,
+            2,
+            glow::FLOAT,
+            false,
+            stride,
+            offset,
+        );
+        glc.enable_vertex_attrib_array(attrib_index);
+        mem::size_of::<Self>() as i32
+    }
+}
+
+impl VertexAttribute for Vec3 {
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32 {
+        glc.vertex_attrib_pointer_f32(
+            attrib_index,
+            3,
+            glow::FLOAT,
+            false,
+            stride,
+            offset
+        );
+        glc.enable_vertex_attrib_array(attrib_index);
+        mem::size_of::<Self>() as i32
+    }
+}
+
+trait Uniform {
+    type ExtraData; // e.g. Texture unit
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, extra: Self::ExtraData);
+}
+
+impl Uniform for Mat4 {
+    type ExtraData = ();
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: ()) {
+        glc.uniform_matrix_4_f32_slice(
+            loc,
+            false,
+            &self.to_cols_array(),
+        );
+    }
+}
+
+impl Uniform for Rc<Texture> {
+    type ExtraData = TextureUnit;
+
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, extra: Self::ExtraData) {
+        let texture_unit = extra;
+        glc.active_texture(texture_unit.slot());
+        glc.bind_texture(glow::TEXTURE_2D, Some(self.tex()));
+        glc.uniform_1_i32(loc, texture_unit.uniform());
+    }
+}
+
+impl Uniform for u32 {
+    type ExtraData = ();
+
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: Self::ExtraData) {
+        glc.uniform_1_u32(loc, *self);
+    }
+}
+
+impl Uniform for bool {
+    type ExtraData = ();
+
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: Self::ExtraData) {
+        glc.uniform_1_u32(loc, *self as u32);
+    }
+}
+
+impl Uniform for f32 {
+    type ExtraData = ();
+
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: Self::ExtraData) {
+        glc.uniform_1_f32(loc, *self);
+    }
+}
+
+impl Uniform for i32 {
+    type ExtraData = ();
+
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: Self::ExtraData) {
+        glc.uniform_1_i32(loc, *self);
+    }
+}
+
+impl Uniform for ScreenSize {
+    type ExtraData = ();
+
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: Self::ExtraData) {
+        // &<[f32; 2]>::from(self.window_resolution)
+        glc.uniform_2_f32_slice(loc, &<[f32; 2]>::from(*self));
+    }
 }
 
 pub trait ShaderUniformLocations {
@@ -37,106 +153,6 @@ where
 {
     fn set(&self, glc: &Context, locations: &L) -> ();
 }
-// Brainstorming
-/*
-// Input
-model_data!(MD3 {
-    attr index: u32,
-    attr uv: Vec2,
-    mut uniform gzdoom: bool,
-    uniform anim: Rc<Texture>,
-    mut uniform eye: Mat4,
-    mut uniform frame: f32,
-    mut uniform mode: u32,
-    uniform tex: Rc<Texture>,
-})
- */
-/*
-// Output
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
-pub struct MD3Vertex {
-    index: u32,
-    uv: Vec2,
-}
-
-impl InterleavedVertexAttribute for MD3Vertex {
-    unsafe fn setup_vertex_attrs(glc: &Context) {
-        let mut attrib_index = 0;
-        let mut offset = 0;
-        let stride = Self::stride();
-
-        glc.vertex_attrib_pointer_i32(attrib_index, 1, glow::UNSIGNED_INT,
-            stride, offset);
-        glc.enable_vertex_attrib_array(attrib_index);
-        offset += mem::size_of::<u32>() as i32;
-        attrib_index += 1;
-
-        glc.vertex_attrib_pointer_f32(attrib_index, 2, glow::FLOAT, false,
-            stride, offset);
-        glc.enable_vertex_attrib_array(attrib_index);
-        // offset += mem::size_of::<Vec2>() as i32;
-        // attrib_index += 1;
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct MD3Uniforms {
-    pub gzdoom: bool,
-    pub anim: Rc<Texture>,
-    pub eye: Mat4,
-    pub frame: f32,
-    pub mode: u32,
-    pub tex: Rc<Texture>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct MD3UniformLocations {
-    gzdoom: Option<NativeUniformLocation>,
-    anim: Option<NativeUniformLocation>,
-    eye: Option<NativeUniformLocation>,
-    frame: Option<NativeUniformLocation>,
-    mode: Option<NativeUniformLocation>,
-    tex: Option<NativeUniformLocation>,
-}
-
-impl ShaderUniformLocations for MD3UniformLocations {
-    fn setup(&mut self, glc: &Context, program: <Context as HasContext>::Program) {
-        unsafe {
-            self.gzdoom = glc.get_uniform_location(program, "gzdoom");
-            self.anim = glc.get_uniform_location(program, "anim");
-            self.eye = glc.get_uniform_location(program, "eye");
-            self.frame = glc.get_uniform_location(program, "frame");
-            self.mode = glc.get_uniform_location(program, "mode");
-            self.tex = glc.get_uniform_location(program, "tex");
-        }
-    }
-}
-
-impl ShaderUniforms<MD3UniformLocations> for MD3Uniforms {
-    fn set(&self, glc: &Context, locations: &MD3UniformLocations) -> () {
-        let mut texture = TextureUnit::default();
-        unsafe {
-            glc.uniform_1_u32(locations.gzdoom.as_ref(), self.gzdoom as u32);
-
-            glc.active_texture(texture.slot());
-            glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
-            glc.uniform_1_i32(locations.anim.as_ref(), texture.uniform());
-
-            glc.uniform_matrix_4_f32_slice(locations.eye.as_ref(), false, self.eye.as_ref());
-
-            glc.uniform_1_f32(locations.frame.as_ref(), self.frame);
-
-            glc.uniform_1_u32(locations.mode.as_ref(), self.mode);
-
-            texture.next();
-            glc.active_texture(texture.slot());
-            glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
-            glc.uniform_1_i32(locations.tex.as_ref(), texture.uniform());
-        }
-    }
-}
- */
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
@@ -145,34 +161,16 @@ pub struct VertexMD3 {
     uv: Vec2,
 }
 
-impl InterleavedVertexAttribute for VertexMD3 {
+impl InterleavedVertexAttributes for VertexMD3 {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
         let stride = Self::STRIDE;
 
-        glc.vertex_attrib_pointer_i32(
-            attrib_index,
-            1,
-            glow::UNSIGNED_INT,
-            stride,
-            offset,
-        );
-        glc.enable_vertex_attrib_array(attrib_index);
-        offset += mem::size_of::<u32>() as i32;
+        offset += u32::enable(glc, attrib_index, stride, offset);
         attrib_index += 1;
 
-        glc.vertex_attrib_pointer_f32(
-            attrib_index,
-            2,
-            glow::FLOAT,
-            false,
-            stride,
-            offset,
-        );
-        glc.enable_vertex_attrib_array(attrib_index);
-        // offset += mem::size_of::<Vec2>() as i32;
-        // attrib_index += 1;
+        Vec2::enable(glc, attrib_index, stride, offset);
     }
 }
 
@@ -232,31 +230,15 @@ impl ShaderUniforms<UniformsMD3Locations> for UniformsMD3 {
     fn set(&self, glc: &Context, locations: &UniformsMD3Locations) -> () {
         let mut texture = TextureUnit::default();
         unsafe {
-            glc.uniform_1_u32(locations.gzdoom.as_ref(), self.gzdoom as u32);
-
-            glc.active_texture(texture.slot());
-            glc.bind_texture(glow::TEXTURE_2D, Some(self.anim.tex()));
-            glc.uniform_1_i32(locations.anim.as_ref(), texture.uniform());
-
-            glc.uniform_matrix_4_f32_slice(
-                locations.eye.as_ref(),
-                false,
-                self.eye.as_ref(),
-            );
-
-            glc.uniform_1_f32(locations.frame.as_ref(), self.frame);
-
-            glc.uniform_1_u32(locations.mode.as_ref(), self.mode);
-
+            self.gzdoom.set_uniform(glc, locations.gzdoom.as_ref(), ());
+            self.anim.set_uniform(glc, locations.anim.as_ref(), texture);
             texture.next();
-            glc.active_texture(texture.slot());
-            glc.bind_texture(glow::TEXTURE_2D, Some(self.tex.tex()));
-            glc.uniform_1_i32(locations.tex.as_ref(), texture.uniform());
-
-            glc.uniform_1_i32(
-                locations.rowsPerFrame.as_ref(),
-                self.rowsPerFrame,
-            );
+            self.eye.set_uniform(glc, locations.eye.as_ref(), ());
+            self.frame.set_uniform(glc, locations.frame.as_ref(), ());
+            self.mode.set_uniform(glc, locations.mode.as_ref(), ());
+            self.tex.set_uniform(glc, locations.tex.as_ref(), texture);
+            texture.next();
+            self.rowsPerFrame.set_uniform(glc, locations.rowsPerFrame.as_ref(), ());
         }
     }
 }
@@ -269,47 +251,19 @@ pub struct VertexRes {
     pub normal: Vec3,
 }
 
-impl InterleavedVertexAttribute for VertexRes {
+impl InterleavedVertexAttributes for VertexRes {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
         let stride = Self::STRIDE;
 
-        glc.vertex_attrib_pointer_f32(
-            attrib_index,
-            3,
-            glow::FLOAT,
-            false,
-            stride,
-            offset,
-        );
-        glc.enable_vertex_attrib_array(attrib_index);
-        offset += mem::size_of::<Vec3>() as i32;
+        offset += Vec3::enable(glc, attrib_index, stride, offset);
         attrib_index += 1;
 
-        glc.vertex_attrib_pointer_f32(
-            attrib_index,
-            3,
-            glow::FLOAT,
-            false,
-            stride,
-            offset,
-        );
-        glc.enable_vertex_attrib_array(attrib_index);
-        offset += mem::size_of::<Vec3>() as i32;
+        offset += Vec3::enable(glc, attrib_index, stride, offset);
         attrib_index += 1;
 
-        glc.vertex_attrib_pointer_f32(
-            attrib_index,
-            3,
-            glow::FLOAT,
-            false,
-            stride,
-            offset,
-        );
-        glc.enable_vertex_attrib_array(attrib_index);
-        // offset += mem::size_of::<Vec3>() as i32;
-        // attrib_index += 1;
+        Vec3::enable(glc, attrib_index, stride, offset);
     }
 }
 
@@ -343,12 +297,8 @@ impl ShaderUniforms<UniformsResLocations> for UniformsRes {
     fn set(&self, glc: &Context, locations: &UniformsResLocations) -> () {
         let mut _texture = TextureUnit::default();
         unsafe {
-            glc.uniform_matrix_4_f32_slice(
-                locations.eye.as_ref(),
-                false,
-                self.eye.as_ref(),
-            );
-            glc.uniform_1_u32(locations.shaded.as_ref(), self.shaded as u32);
+            self.eye.set_uniform(glc, locations.eye.as_ref(), ());
+            self.shaded.set_uniform(glc, locations.shaded.as_ref(), ());
         }
     }
 }
@@ -360,35 +310,16 @@ pub struct VertexSprite {
     pub size: Vec2,
 }
 
-impl InterleavedVertexAttribute for VertexSprite {
+impl InterleavedVertexAttributes for VertexSprite {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
         let stride = Self::STRIDE;
 
-        glc.vertex_attrib_pointer_f32(
-            attrib_index,
-            2,
-            glow::FLOAT,
-            false,
-            stride,
-            offset,
-        );
-        glc.enable_vertex_attrib_array(attrib_index);
-        offset += mem::size_of::<Vec2>() as i32;
+        offset += Vec2::enable(glc, attrib_index, stride, offset);
         attrib_index += 1;
 
-        glc.vertex_attrib_pointer_f32(
-            attrib_index,
-            2,
-            glow::FLOAT,
-            false,
-            stride,
-            offset,
-        );
-        glc.enable_vertex_attrib_array(attrib_index);
-        // offset += mem::size_of::<Vec2>() as i32;
-        // attrib_index += 1;
+        Vec2::enable(glc, attrib_index, stride, offset);
     }
 }
 
@@ -403,7 +334,7 @@ pub struct VertexBuffer {
 impl VertexBuffer {
     pub fn new<T>(glc: Arc<Context>, buf: Box<[T]>) -> Self
     where
-        T: InterleavedVertexAttribute + Pod,
+        T: InterleavedVertexAttributes + Pod,
     {
         let (vao, vbo) = unsafe {
             let glc = &glc;

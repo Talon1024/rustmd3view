@@ -14,12 +14,11 @@ use glutin::{
 use glutin_winit::{ApiPrefence, DisplayBuilder};
 use lazy_static::lazy_static;
 use raw_window_handle::HasRawWindowHandle;
-use rfd::AsyncFileDialog;
 use std::{
     ffi::CStr,
     fs::File,
     future::Future,
-    io::{Read, Write},
+    io::Read,
     num::NonZeroU32,
     sync::Arc,
 };
@@ -112,10 +111,10 @@ pub(crate) fn show_window<CE>(
     };
     (WindowContext { wc, surf }, Arc::new(glc))
 }
-
+/* 
 pub(crate) async fn save_file(contents: Vec<u8>, fname: &str) {
     let fhandle =
-        AsyncFileDialog::new().set_file_name(&fname).save_file().await;
+        AsyncFileDialog::new().set_file_name(fname).save_file().await;
     if let Some(fhandle) = fhandle {
         let fpath = fhandle.path();
         let file = File::create(fpath);
@@ -131,7 +130,7 @@ pub(crate) async fn save_file(contents: Vec<u8>, fname: &str) {
         }
     }
 }
-
+ */
 // An asset is a file that should be part of the application distribution
 pub(crate) async fn load_asset(relative_path: impl AsRef<str>) -> Result<Vec<u8>, Error> {
     let mut file = File::open(relative_path.as_ref())?;

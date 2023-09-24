@@ -613,15 +613,15 @@ fn main() -> Result<(), AError> {
 
                 app.tag_axes.shader.activate().unwrap();
                 if let Some(model) = app.md3_data.get(0) {
-                    let current_frame = app.current_frame.floor() as usize;
-                    let next_frame = app.current_frame.ceil() as usize;
+                    let current_frame = app.current_frame.floor() as u32;
+                    let next_frame = app.current_frame.ceil() as u32;
                     let lerp_factor = app.current_frame.fract();
                     let num_tags = model.num_tags;
                     (0..num_tags).for_each(|tag_index| {
-                        let tag_a = tag_index + num_tags * current_frame;
-                        let tag_b = tag_index + num_tags * next_frame;
-                        let tag_a = &model.tags[tag_a];
-                        let tag_b = &model.tags[tag_b];
+                        let tag_a = tag_index + num_tags * current_frame as usize;
+                        let tag_b = tag_index + num_tags * next_frame as usize;
+                        let tag_a = &model.tags[tag_a as usize];
+                        let tag_b = &model.tags[tag_b as usize];
                         let tag_axes = lerp(tag_a.axes, tag_b.axes, lerp_factor);
                         let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
                         let tag_distance =
@@ -912,15 +912,15 @@ ui.horizontal(|ui| {
                         id: Id::new("tag_name_overlays"),
                     });
                     if let Some(model) = app.md3_data.get(0) {
-                        let current_frame = app.current_frame.floor() as usize;
-                        let next_frame = app.current_frame.ceil() as usize;
+                        let current_frame = app.current_frame.floor() as u32;
+                        let next_frame = app.current_frame.ceil() as u32;
                         let lerp_factor = app.current_frame.fract();
                         let num_tags = model.num_tags;
                         (0..num_tags).for_each(|tag_index| {
-                            let tag_a = tag_index + num_tags * current_frame;
-                            let tag_b = tag_index + num_tags * next_frame;
-                            let tag_a = &model.tags[tag_a];
-                            let tag_b = &model.tags[tag_b];
+                            let tag_a = tag_index + num_tags * current_frame as usize;
+                            let tag_b = tag_index + num_tags * next_frame as usize;
+                            let tag_a = &model.tags[tag_a as usize];
+                            let tag_b = &model.tags[tag_b as usize];
                             let tag_origin = lerp(tag_a.origin, tag_b.origin, lerp_factor);
                             let tag_name = String::from_utf8_stop(&tag_a.name).to_string();
                             let font =
@@ -1020,6 +1020,7 @@ async fn pick_and_load_model(elp: EventLoopProxy<AppEvent>) -> () {
 }
 
 fn load_model(file: &mut (impl Read + Seek), fpath: Option<&Path>) -> Result<AppEvent, AError> {
+    //MD3Model::read(file)
     md3::read_md3(file).map_err(AError::from)
         .and_then(|model| {
             let stuff: Vec<_> = model.surfaces.iter().filter_map(|surf| {

@@ -1,10 +1,11 @@
 use glam::f32::{Mat3, Vec2, Vec3};
 use rayon::iter as riter;
 use rayon::prelude::*;
+use std::hash::DefaultHasher;
 use std::io::{Read, Seek, SeekFrom};
 use std::iter;
 use thiserror::Error;
-use binrw::BinRead;
+use binrw::{BinRead, Endian, VecArgs};
 
 pub const MD3_ID: [u8; 4] = *b"IDP3";
 pub const MD3_VERSION: i32 = 15;
@@ -282,9 +283,12 @@ pub fn read_md3(data: &mut (impl Read + Seek)) -> MD3Result<MD3Model> {
     // Frames
     let offset_frames = seek_offset + offset_frames as u64;
     data.seek(SeekFrom::Start(offset_frames)).or(Err(EOF))?;
-    model.frames = (0..num_frames)
-        .map(|_| MD3Frame::read(data).map_err(MD3ReadError::from))
-        .collect::<MD3Result<Vec<MD3Frame>>>()?;
+    model.frames = Vec::<MD3Frame>::read_options(
+        data, Endian::Little, VecArgs {
+            count: num_frames as usize,
+            inner: Default::default(),
+        }
+    )?;
 
     // Tags
     // num_tags in the header is the amount of tags per frame on the model
@@ -292,13 +296,17 @@ pub fn read_md3(data: &mut (impl Read + Seek)) -> MD3Result<MD3Model> {
     let num_tags = num_tags * num_frames;
     let offset_tags = seek_offset + offset_tags as u64;
     data.seek(SeekFrom::Start(offset_tags)).or(Err(EOF))?;
-    model.tags = (0..num_tags)
-        .map(|_| MD3FrameTag::read(data).map_err(MD3ReadError::from))
-        .collect::<MD3Result<Vec<MD3FrameTag>>>()?;
+    model.tags = Vec::<MD3FrameTag>::read_options(
+        data, Endian::Little, VecArgs {
+            count: num_tags as usize,
+            inner: Default::default(),
+        }
+    )?;
 
     // Surfaces
     let offset_surfs = seek_offset + offset_surfs as u64;
     data.seek(SeekFrom::Start(offset_surfs)).or(Err(EOF))?;
+    // MD3Surface is not BinRead for now
     model.surfaces = (0..num_surfs)
         .map(|_| read_surface(data))
         .collect::<MD3Result<Vec<MD3Surface>>>()?;
@@ -369,31 +377,43 @@ fn read_surface(data: &mut (impl Read + Seek)) -> MD3Result<MD3Surface> {
     // Shaders
     let offset_shaders = seek_offset + offset_shaders as u64;
     data.seek(SeekFrom::Start(offset_shaders)).or(Err(EOF))?;
-    surface.shaders = (0..num_shaders)
-        .map(|_| MD3Shader::read(data).map_err(MD3ReadError::from))
-        .collect::<MD3Result<Vec<MD3Shader>>>()?;
+    surface.shaders = Vec::<MD3Shader>::read_options(
+        data, Endian::Little, VecArgs {
+            count: num_shaders as usize,
+            inner: Default::default(),
+        }
+    )?;
 
     // Triangles
     let offset_triangles = seek_offset + offset_triangles as u64;
     data.seek(SeekFrom::Start(offset_triangles)).or(Err(EOF))?;
-    surface.triangles = (0..num_tris)
-        .map(|_| MD3Triangle::read(data).map_err(MD3ReadError::from))
-        .collect::<MD3Result<Vec<MD3Triangle>>>()?;
+    surface.triangles = Vec::<MD3Triangle>::read_options(
+        data, Endian::Little, VecArgs {
+            count: num_tris as usize,
+            inner: Default::default(),
+        }
+    )?;
 
     // UVs
     let offset_uvs = seek_offset + offset_uvs as u64;
     data.seek(SeekFrom::Start(offset_uvs)).or(Err(EOF))?;
-    surface.texcoords = (0..surface.num_verts)
-        .map(|_| MD3TexCoord::read(data).map_err(MD3ReadError::from))
-        .collect::<MD3Result<Vec<MD3TexCoord>>>()?;
+    surface.texcoords = Vec::<MD3TexCoord>::read_options(
+        data, Endian::Little, VecArgs {
+            count: num_verts as usize,
+            inner: Default::default(),
+        }
+    )?;
 
     // Vertices
     let num_verts = surface.num_verts * surface.num_frames;
     let offset_verts = seek_offset + offset_verts as u64;
     data.seek(SeekFrom::Start(offset_verts)).or(Err(EOF))?;
-    surface.vertices = (0..num_verts)
-        .map(|_| MD3FrameVertex::read(data).map_err(MD3ReadError::from))
-        .collect::<MD3Result<Vec<MD3FrameVertex>>>()?;
+    surface.vertices = Vec::<MD3FrameVertex>::read_options(
+        data, Endian::Little, VecArgs {
+            count: num_verts as usize,
+            inner: Default::default(),
+        }
+    )?;
 
     let offset_end = seek_offset + offset_end as u64;
     let pos = data.stream_position().or(Err(EOF))?;

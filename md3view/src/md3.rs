@@ -4,11 +4,13 @@ use rayon::prelude::*;
 use std::io::{Read, Seek, SeekFrom};
 use std::iter;
 use thiserror::Error;
+use binrw::BinRead;
 
 pub const MD3_ID: [u8; 4] = *b"IDP3";
 pub const MD3_VERSION: i32 = 15;
+const MAX_QPATH: usize = 64;
 
-pub type MD3Name = [u8; 64];
+pub type MD3Name = [u8; MAX_QPATH];
 
 #[derive(Debug, Clone)]
 pub struct MD3Model {
@@ -26,19 +28,26 @@ impl MD3Model {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, BinRead)]
+#[br(little)]
 pub struct MD3Frame {
+    #[br(map(Vec3::from_array))]
     pub min: Vec3,
+    #[br(map(Vec3::from_array))]
     pub max: Vec3,
+    #[br(map(Vec3::from_array))]
     pub origin: Vec3,
     pub radius: f32,
     pub name: [u8; 16],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, BinRead)]
+#[br(little)]
 pub struct MD3FrameTag {
     pub name: MD3Name,
+    #[br(map(Vec3::from_array))]
     pub origin: Vec3,
+    #[br(map(|m: [f32; 9]| Mat3::from_cols_array(&m)))]
     pub axes: Mat3,
 }
 
@@ -154,18 +163,28 @@ impl MD3Surface {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, BinRead)]
+#[br(little)]
 pub struct MD3Shader {
     pub name: MD3Name,
     pub index: u32,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MD3Triangle(pub [u32; 3]);
-#[derive(Debug, Clone, Copy, Default)]
-pub struct MD3TexCoord(pub Vec2);
+#[derive(Debug, Clone, Copy, Default, BinRead)]
+#[br(little)]
+pub struct MD3Triangle(
+    #[br(map(|tri: [u32; 3]| {
+        [tri[2], tri[1], tri[0]]
+    }))]
+    pub [u32; 3]
+);
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, BinRead)]
+#[br(little)]
+pub struct MD3TexCoord(#[br(map(Vec2::from_array))] pub Vec2);
+
+#[derive(Debug, Clone, Copy, Default, BinRead)]
+#[br(little)]
 pub struct MD3FrameVertex {
     pub x: i16,
     pub y: i16,
@@ -179,7 +198,7 @@ impl MD3FrameVertex {
     }
 }
 
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Error)]
 pub enum MD3ReadError {
     #[error("Wrong ID ({0:?} instead of IDP3)!")]
     WrongId([u8; 4]),
@@ -189,6 +208,14 @@ pub enum MD3ReadError {
     EOF,
     #[error("Reader is after end position (position is {0})!")]
     AfterEnd(u64),
+    #[error("binrw error: {0}")]
+    BinRead(binrw::Error)
+}
+
+impl From<binrw::Error> for MD3ReadError {
+    fn from(value: binrw::Error) -> Self {
+        MD3ReadError::BinRead(value)
+    }
 }
 
 // trait ReadStream : Read + Seek {}
@@ -198,130 +225,96 @@ pub fn read_md3(data: &mut (impl Read + Seek)) -> MD3Result<MD3Model> {
     use MD3ReadError::*;
     let mut model = MD3Model {
         version: MD3_VERSION,
-        name: [0; 64],
+        name: [0; MAX_QPATH],
         num_tags: 0,
         frames: vec![],
         tags: vec![],
         surfaces: vec![],
     };
-    let mut int_buf = [0; 4];
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    if int_buf != MD3_ID {
-        return Err(WrongId(int_buf));
+
+    // This keeps the code clean with a declarative definition of MD3Header
+    #[derive(BinRead)]
+    #[br(little)]
+    struct MD3Header {
+        ident: [u8; 4],
+        version: i32,
+        name: [u8; MAX_QPATH],
+        _flags: u32,
+        num_frames: u32,
+        num_tags: u32,
+        num_surfs: u32,
+        _num_skins: u32,
+        offset_frames: u32,
+        offset_tags: u32,
+        offset_surfs: u32,
+        offset_end: u32,
     }
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let version = i32::from_le_bytes(int_buf);
+
+    // Read the data
+    let MD3Header {
+        ident,
+        version,
+        name,
+        _flags,
+        num_frames,
+        num_tags,
+        num_surfs,
+        _num_skins,
+        offset_frames,
+        offset_tags,
+        offset_surfs,
+        offset_end,
+    } = MD3Header::read(data)?;
+    let seek_offset = 0u64;
+
+    // Process the data
+
+    if ident != MD3_ID {
+        return Err(WrongId(ident));
+    }
     if version != MD3_VERSION {
         return Err(UnsupportedVersion(version));
     }
-    data.read_exact(&mut model.name).or(Err(EOF))?;
-    /* data.read_exact(&mut int_buf).or(Err(EOF))?; */
-    data.seek(SeekFrom::Current(4)).or(Err(EOF))?;
-    /* let flags = i32::from_le_bytes(int_buf); */
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let num_frames = u32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let num_tags = u32::from_le_bytes(int_buf);
+
+    model.name = name;
     model.num_tags = num_tags as usize;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let num_surfs = u32::from_le_bytes(int_buf);
-    /* data.read_exact(&mut int_buf).or(Err(EOF))?; */
-    data.seek(SeekFrom::Current(4)).or(Err(EOF))?;
-    /* let num_skins = u32::from_le_bytes(int_buf); */
-    // Offsets
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_frames = u32::from_le_bytes(int_buf) as u64;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_tags = u32::from_le_bytes(int_buf) as u64;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_surfaces = u32::from_le_bytes(int_buf) as u64;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_end = u32::from_le_bytes(int_buf) as u64;
+
     // Frames
+    let offset_frames = seek_offset + offset_frames as u64;
     data.seek(SeekFrom::Start(offset_frames)).or(Err(EOF))?;
     model.frames = (0..num_frames)
-        .map(|_| read_frame(data))
+        .map(|_| MD3Frame::read(data).map_err(MD3ReadError::from))
         .collect::<MD3Result<Vec<MD3Frame>>>()?;
+
     // Tags
-    {
-        data.seek(SeekFrom::Start(offset_tags)).or(Err(EOF))?;
-        let num_tags = num_tags * num_frames;
-        model.tags = (0..num_tags)
-            .map(|_| read_tag(data))
-            .collect::<MD3Result<Vec<MD3FrameTag>>>()?;
-    }
+    // num_tags in the header is the amount of tags per frame on the model
+    // Actual amount of tag data is multiplied by the number of frames
+    let num_tags = num_tags * num_frames;
+    let offset_tags = seek_offset + offset_tags as u64;
+    data.seek(SeekFrom::Start(offset_tags)).or(Err(EOF))?;
+    model.tags = (0..num_tags)
+        .map(|_| MD3FrameTag::read(data).map_err(MD3ReadError::from))
+        .collect::<MD3Result<Vec<MD3FrameTag>>>()?;
+
     // Surfaces
-    data.seek(SeekFrom::Start(offset_surfaces)).or(Err(EOF))?;
+    let offset_surfs = seek_offset + offset_surfs as u64;
+    data.seek(SeekFrom::Start(offset_surfs)).or(Err(EOF))?;
     model.surfaces = (0..num_surfs)
         .map(|_| read_surface(data))
         .collect::<MD3Result<Vec<MD3Surface>>>()?;
+
+    // Ensure not past EOF
     let pos = data.stream_position().or(Err(EOF))?;
-    if pos > offset_end {
+    if pos > offset_end as u64 {
         return Err(AfterEnd(pos));
     }
     Ok(model)
 }
 
-fn read_frame(data: &mut (impl Read + Seek)) -> MD3Result<MD3Frame> {
-    use MD3ReadError::*;
-    let mut frame = MD3Frame {
-        min: Vec3::ZERO,
-        max: Vec3::ZERO,
-        origin: Vec3::ZERO,
-        radius: 0.,
-        name: [0; 16],
-    };
-    let mut int_buf = [0; 4];
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.min.x = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.min.y = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.min.z = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.max.x = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.max.y = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.max.z = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.origin.x = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.origin.y = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.origin.z = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    frame.radius = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut frame.name).or(Err(EOF))?;
-    Ok(frame)
-}
-
-fn read_tag(data: &mut (impl Read + Seek)) -> MD3Result<MD3FrameTag> {
-    use MD3ReadError::*;
-    let mut tag =
-        MD3FrameTag { name: [0; 64], origin: Vec3::ZERO, axes: Mat3::ZERO };
-    let mut int_buf = [0; 4];
-    data.read_exact(&mut tag.name).or(Err(EOF))?;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.origin.x = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.origin.y = f32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    tag.origin.z = f32::from_le_bytes(int_buf);
-    let mut mtx_buf = [0.0f32; 9];
-    mtx_buf.as_mut_slice().iter_mut().try_for_each(|el| {
-        data.read_exact(&mut int_buf).or(Err(EOF))?;
-        *el = f32::from_le_bytes(int_buf);
-        Ok(())
-    })?;
-    tag.axes = Mat3::from_cols_array(&mtx_buf);
-    Ok(tag)
-}
-
 fn read_surface(data: &mut (impl Read + Seek)) -> MD3Result<MD3Surface> {
     use MD3ReadError::*;
     let mut surface = MD3Surface {
-        name: [0; 64],
+        name: [0; MAX_QPATH],
         num_verts: 0,
         num_frames: 0,
         shaders: vec![],
@@ -329,116 +322,83 @@ fn read_surface(data: &mut (impl Read + Seek)) -> MD3Result<MD3Surface> {
         texcoords: vec![],
         vertices: vec![],
     };
-    let offset_ref = data.stream_position().or(Err(EOF))?;
-    let mut int_buf = [0; 4];
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    if int_buf != MD3_ID {
-        return Err(WrongId(int_buf));
+    let seek_offset = data.stream_position().or(Err(EOF))?;
+
+    #[derive(BinRead)]
+    #[br(little)]
+    struct MD3SurfaceHeader {
+        ident: [u8; 4],
+        name: [u8; MAX_QPATH],
+        _flags: u32,
+        num_frames: u32,
+        num_shaders: u32,
+        num_verts: u32,
+        num_tris: u32,
+        offset_triangles: u32,
+        offset_shaders: u32,
+        offset_uvs: u32,
+        offset_verts: u32,
+        offset_end: u32,
     }
-    data.read_exact(&mut surface.name).or(Err(EOF))?;
-    data.seek(SeekFrom::Current(4)).or(Err(EOF))?; // flags (unused)
+
+    // Read the data
+    let MD3SurfaceHeader {
+        ident,
+        name,
+        _flags,
+        num_frames,
+        num_shaders,
+        num_verts,
+        num_tris,
+        offset_triangles,
+        offset_shaders,
+        offset_uvs,
+        offset_verts,
+        offset_end,
+    } = MD3SurfaceHeader::read(data)?;
+
+    // Process the data
+    if ident != MD3_ID {
+        return Err(WrongId(ident));
+    }
+    surface.name = name;
     // Sizes/counts
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    surface.num_frames = u32::from_le_bytes(int_buf) as usize;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let num_shaders = u32::from_le_bytes(int_buf);
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    surface.num_verts = u32::from_le_bytes(int_buf) as usize;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let num_tris = u32::from_le_bytes(int_buf);
-    // Offsets
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_triangles = offset_ref + u32::from_le_bytes(int_buf) as u64;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_shaders = offset_ref + u32::from_le_bytes(int_buf) as u64;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_uvs = offset_ref + u32::from_le_bytes(int_buf) as u64;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_verts = offset_ref + u32::from_le_bytes(int_buf) as u64;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    let offset_end = offset_ref + u32::from_le_bytes(int_buf) as u64;
+    surface.num_frames = num_frames as usize;
+    surface.num_verts = num_verts as usize;
+
     // Shaders
+    let offset_shaders = seek_offset + offset_shaders as u64;
     data.seek(SeekFrom::Start(offset_shaders)).or(Err(EOF))?;
     surface.shaders = (0..num_shaders)
-        .map(|_| read_shader(data))
+        .map(|_| MD3Shader::read(data).map_err(MD3ReadError::from))
         .collect::<MD3Result<Vec<MD3Shader>>>()?;
+
     // Triangles
+    let offset_triangles = seek_offset + offset_triangles as u64;
     data.seek(SeekFrom::Start(offset_triangles)).or(Err(EOF))?;
     surface.triangles = (0..num_tris)
-        .map(|_| read_triangle(data))
+        .map(|_| MD3Triangle::read(data).map_err(MD3ReadError::from))
         .collect::<MD3Result<Vec<MD3Triangle>>>()?;
+
     // UVs
+    let offset_uvs = seek_offset + offset_uvs as u64;
     data.seek(SeekFrom::Start(offset_uvs)).or(Err(EOF))?;
     surface.texcoords = (0..surface.num_verts)
-        .map(|_| read_texcoord(data))
+        .map(|_| MD3TexCoord::read(data).map_err(MD3ReadError::from))
         .collect::<MD3Result<Vec<MD3TexCoord>>>()?;
+
     // Vertices
-    {
-        let num_verts = surface.num_verts * surface.num_frames;
-        data.seek(SeekFrom::Start(offset_verts)).or(Err(EOF))?;
-        surface.vertices = (0..num_verts)
-            .map(|_| read_vertex(data))
-            .collect::<MD3Result<Vec<MD3FrameVertex>>>()?;
-    }
+    let num_verts = surface.num_verts * surface.num_frames;
+    let offset_verts = seek_offset + offset_verts as u64;
+    data.seek(SeekFrom::Start(offset_verts)).or(Err(EOF))?;
+    surface.vertices = (0..num_verts)
+        .map(|_| MD3FrameVertex::read(data).map_err(MD3ReadError::from))
+        .collect::<MD3Result<Vec<MD3FrameVertex>>>()?;
+
+    let offset_end = seek_offset + offset_end as u64;
     let pos = data.stream_position().or(Err(EOF))?;
     if pos > offset_end {
         return Err(AfterEnd(pos));
     }
     Ok(surface)
-}
-
-fn read_shader(data: &mut (impl Read + Seek)) -> MD3Result<MD3Shader> {
-    use MD3ReadError::*;
-    let mut shader = MD3Shader { name: [0; 64], index: 0 };
-    let mut int_buf = [0; 4];
-    data.read_exact(&mut shader.name).or(Err(EOF))?;
-    data.read_exact(&mut int_buf).or(Err(EOF))?;
-    shader.index = u32::from_le_bytes(int_buf);
-    Ok(shader)
-}
-
-fn read_triangle(data: &mut (impl Read + Seek)) -> MD3Result<MD3Triangle> {
-    use MD3ReadError::*;
-    let mut triangle = [0; 3];
-    let mut int_buf = [0; 4];
-    // When `array_try_map` is stabilized...
-    // See https://github.com/rust-lang/rust/issues/79711
-    /* triangle = triangle.try_map(|_| {
-        data.read_exact(&mut int_buf).or(Err(EOF))?;
-        Ok(u32::from_le_bytes(int_buf))
-    })?; */
-    for i in 0..triangle.len() {
-        data.read_exact(&mut int_buf).or(Err(EOF))?;
-        triangle[i] = u32::from_le_bytes(int_buf);
-    }
-    let tmp = triangle[0];
-    triangle[0] = triangle[2];
-    triangle[2] = tmp;
-    Ok(MD3Triangle(triangle))
-}
-
-fn read_texcoord(data: &mut (impl Read + Seek)) -> MD3Result<MD3TexCoord> {
-    use MD3ReadError::*;
-    let mut int_buf = [0; 4];
-    let mut coords = [0.; 2];
-    for i in 0..coords.len() {
-        data.read_exact(&mut int_buf).or(Err(EOF))?;
-        coords[i] = f32::from_le_bytes(int_buf);
-    }
-    Ok(MD3TexCoord(Vec2::from(coords)))
-}
-
-fn read_vertex(data: &mut (impl Read + Seek)) -> MD3Result<MD3FrameVertex> {
-    use MD3ReadError::*;
-    let mut short_buf = [0; 2];
-    let mut vertex = MD3FrameVertex { x: 0, y: 0, z: 0, n: 0 };
-    data.read_exact(&mut short_buf).or(Err(EOF))?;
-    vertex.x = i16::from_le_bytes(short_buf);
-    data.read_exact(&mut short_buf).or(Err(EOF))?;
-    vertex.y = i16::from_le_bytes(short_buf);
-    data.read_exact(&mut short_buf).or(Err(EOF))?;
-    vertex.z = i16::from_le_bytes(short_buf);
-    data.read_exact(&mut short_buf).or(Err(EOF))?;
-    vertex.n = u16::from_le_bytes(short_buf);
-    Ok(vertex)
 }

@@ -18,8 +18,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         })
         .collect::<Box<[PathBuf]>>();
-    let mut cmd = Command::new("glslangValidator");
-    cmd.args(shaders.into_iter());
+    let mut cmd = Command::new("glslang");
+    cmd.args(shaders);
     match cmd.status()?.success() {
         true => Ok(()),
         false => {

@@ -1,7 +1,6 @@
 use glam::f32::{Mat3, Vec2, Vec3};
 use rayon::iter as riter;
 use rayon::prelude::*;
-use std::hash::DefaultHasher;
 use std::io::{Read, Seek, SeekFrom};
 use std::iter;
 use thiserror::Error;
@@ -15,7 +14,7 @@ pub type MD3Name = [u8; MAX_QPATH];
 
 #[derive(Debug, Clone)]
 pub struct MD3Model {
-    pub version: i32,
+    pub _version: i32,
     pub name: MD3Name,
     pub num_tags: usize,
     pub frames: Vec<MD3Frame>,
@@ -33,13 +32,13 @@ impl MD3Model {
 #[br(little)]
 pub struct MD3Frame {
     #[br(map(Vec3::from_array))]
-    pub min: Vec3,
+    pub _min: Vec3,
     #[br(map(Vec3::from_array))]
-    pub max: Vec3,
+    pub _max: Vec3,
     #[br(map(Vec3::from_array))]
-    pub origin: Vec3,
+    pub _origin: Vec3,
     pub radius: f32,
-    pub name: [u8; 16],
+    pub _name: [u8; 16],
 }
 
 #[derive(Debug, Clone, BinRead)]
@@ -65,7 +64,7 @@ pub struct MD3Surface {
 
 #[derive(Debug, Clone, Default)]
 pub struct Animation {
-    pub vertices: u32,
+    pub _vertices: u32,
     pub frames: u32,
     pub rows_per_frame: u32,
     pub data: Box<[u8]>,
@@ -156,7 +155,7 @@ impl MD3Surface {
         };
         assert_eq!(data.len(), width * height * channels);
         Animation {
-            vertices: vertices as u32,
+            _vertices: vertices as u32,
             frames: frames as u32,
             rows_per_frame: rows_per_frame as u32,
             data,
@@ -168,7 +167,7 @@ impl MD3Surface {
 #[br(little)]
 pub struct MD3Shader {
     pub name: MD3Name,
-    pub index: u32,
+    pub _index: u32,
 }
 
 #[derive(Debug, Clone, Copy, Default, BinRead)]
@@ -219,13 +218,26 @@ impl From<binrw::Error> for MD3ReadError {
     }
 }
 
+macro_rules! read_data_section {
+    ($base_offset: ident, $data_offset: ident, $data: ident, $target: ident.$output: ident, $outtype: ty, $count: ident) => {
+    let offset = $base_offset + $data_offset as u64;
+    $data.seek(SeekFrom::Start(offset)).or(Err(EOF))?;
+    $target.$output = Vec::<$outtype>::read_options(
+        $data, Endian::Little, VecArgs {
+            count: $count as usize,
+            inner: Default::default(),
+        }
+    )?;
+    }
+}
+
 // trait ReadStream : Read + Seek {}
 type MD3Result<T> = Result<T, MD3ReadError>;
 
 pub fn read_md3(data: &mut (impl Read + Seek)) -> MD3Result<MD3Model> {
     use MD3ReadError::*;
     let mut model = MD3Model {
-        version: MD3_VERSION,
+        _version: MD3_VERSION,
         name: [0; MAX_QPATH],
         num_tags: 0,
         frames: vec![],
@@ -281,27 +293,13 @@ pub fn read_md3(data: &mut (impl Read + Seek)) -> MD3Result<MD3Model> {
     model.num_tags = num_tags as usize;
 
     // Frames
-    let offset_frames = seek_offset + offset_frames as u64;
-    data.seek(SeekFrom::Start(offset_frames)).or(Err(EOF))?;
-    model.frames = Vec::<MD3Frame>::read_options(
-        data, Endian::Little, VecArgs {
-            count: num_frames as usize,
-            inner: Default::default(),
-        }
-    )?;
+    read_data_section!(seek_offset, offset_frames, data, model.frames, MD3Frame, num_frames);
 
     // Tags
     // num_tags in the header is the amount of tags per frame on the model
     // Actual amount of tag data is multiplied by the number of frames
     let num_tags = num_tags * num_frames;
-    let offset_tags = seek_offset + offset_tags as u64;
-    data.seek(SeekFrom::Start(offset_tags)).or(Err(EOF))?;
-    model.tags = Vec::<MD3FrameTag>::read_options(
-        data, Endian::Little, VecArgs {
-            count: num_tags as usize,
-            inner: Default::default(),
-        }
-    )?;
+    read_data_section!(seek_offset, offset_tags, data, model.tags, MD3FrameTag, num_tags);
 
     // Surfaces
     let offset_surfs = seek_offset + offset_surfs as u64;
@@ -375,45 +373,17 @@ fn read_surface(data: &mut (impl Read + Seek)) -> MD3Result<MD3Surface> {
     surface.num_verts = num_verts as usize;
 
     // Shaders
-    let offset_shaders = seek_offset + offset_shaders as u64;
-    data.seek(SeekFrom::Start(offset_shaders)).or(Err(EOF))?;
-    surface.shaders = Vec::<MD3Shader>::read_options(
-        data, Endian::Little, VecArgs {
-            count: num_shaders as usize,
-            inner: Default::default(),
-        }
-    )?;
+    read_data_section!(seek_offset, offset_shaders, data, surface.shaders, MD3Shader, num_shaders);
 
     // Triangles
-    let offset_triangles = seek_offset + offset_triangles as u64;
-    data.seek(SeekFrom::Start(offset_triangles)).or(Err(EOF))?;
-    surface.triangles = Vec::<MD3Triangle>::read_options(
-        data, Endian::Little, VecArgs {
-            count: num_tris as usize,
-            inner: Default::default(),
-        }
-    )?;
+    read_data_section!(seek_offset, offset_triangles, data, surface.triangles, MD3Triangle, num_tris);
 
     // UVs
-    let offset_uvs = seek_offset + offset_uvs as u64;
-    data.seek(SeekFrom::Start(offset_uvs)).or(Err(EOF))?;
-    surface.texcoords = Vec::<MD3TexCoord>::read_options(
-        data, Endian::Little, VecArgs {
-            count: num_verts as usize,
-            inner: Default::default(),
-        }
-    )?;
+    read_data_section!(seek_offset, offset_uvs, data, surface.texcoords, MD3TexCoord, num_verts);
 
     // Vertices
     let num_verts = surface.num_verts * surface.num_frames;
-    let offset_verts = seek_offset + offset_verts as u64;
-    data.seek(SeekFrom::Start(offset_verts)).or(Err(EOF))?;
-    surface.vertices = Vec::<MD3FrameVertex>::read_options(
-        data, Endian::Little, VecArgs {
-            count: num_verts as usize,
-            inner: Default::default(),
-        }
-    )?;
+    read_data_section!(seek_offset, offset_verts, data, surface.vertices, MD3FrameVertex, num_verts);
 
     let offset_end = seek_offset + offset_end as u64;
     let pos = data.stream_position().or(Err(EOF))?;

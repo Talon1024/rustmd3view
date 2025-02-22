@@ -126,7 +126,7 @@ impl TextureCache {
             .cloned()
             .filter(|f| f != NULL_TEXTURE_NAME)
             .collect();
-        non_null_textures.into_iter().map(String::as_str).for_each(|k| {
+        non_null_textures.iter().map(String::as_str).for_each(|k| {
             self.cache.remove(k);
         });
     }
@@ -998,7 +998,7 @@ async fn pick_and_load_texture(elp: EventLoopProxy<AppEvent>, sdr_name: String) 
 async fn pick_and_load_model(elp: EventLoopProxy<AppEvent>) -> () {
     let picker = AsyncFileDialog::new().add_filter("MD3", &["md3"]);
     if let Some(file_handle) = picker.pick_file().await {
-        let fpath = if cfg!(not(target_family = "wasm32")) {
+        let fpath = if cfg!(not(target_family = "wasm")) {
             Some(file_handle.path())
         } else {
             None

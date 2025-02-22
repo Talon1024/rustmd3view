@@ -1,8 +1,6 @@
-use glam::{Vec2, Vec3, Mat4};
+use glam::Vec2;
 use bytemuck::{Pod, Zeroable};
 use winit::dpi::LogicalSize;
-
-use crate::md3::MD3Frame;
 
 #[derive(Debug, Clone, Copy, Default, Pod, Zeroable)]
 #[repr(C)]
@@ -38,31 +36,32 @@ impl From<ScreenSize> for Vec2 {
     }
 }
 
+/*
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BoundingBox {
-    pub min: Vec3,
-    pub max: Vec3,
+    pub _min: Vec3,
+    pub _max: Vec3,
 }
 
 impl From<MD3Frame> for BoundingBox {
     fn from(MD3Frame { min, max, .. }: MD3Frame) -> Self {
-        BoundingBox { min, max }
+        BoundingBox { _min: min, _max: max }
     }
 }
 
 impl BoundingBox {
     pub fn to_lines(&self, camera: Mat4) -> Vec<Vec2> {
         let bbox_points: [Vec3; 8] = [
-            self.min,
-            Vec3 { x: self.max.x, y: self.min.y, z: self.min.z },
-            Vec3 { x: self.min.x, y: self.max.y, z: self.min.z },
-            Vec3 { x: self.min.x, y: self.min.y, z: self.max.z },
-            Vec3 { x: self.min.x, y: self.max.y, z: self.max.z },
-            Vec3 { x: self.max.x, y: self.min.y, z: self.max.z },
-            Vec3 { x: self.max.x, y: self.max.y, z: self.min.z },
-            self.max,
+            self._min,
+            Vec3 { x: self._max.x, y: self._min.y, z: self._min.z },
+            Vec3 { x: self._min.x, y: self._max.y, z: self._min.z },
+            Vec3 { x: self._min.x, y: self._min.y, z: self._max.z },
+            Vec3 { x: self._min.x, y: self._max.y, z: self._max.z },
+            Vec3 { x: self._max.x, y: self._min.y, z: self._max.z },
+            Vec3 { x: self._max.x, y: self._max.y, z: self._min.z },
+            self._max,
         ];
-        let closest = bbox_points.iter()
+        let _closest = bbox_points.iter()
             .map(|pt| camera.project_point3(*pt))
             .reduce(|a, b| {
                 let dast = a.length();
@@ -78,3 +77,4 @@ impl BoundingBox {
         vec![]
     }
 }
+*/

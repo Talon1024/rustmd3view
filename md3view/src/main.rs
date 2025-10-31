@@ -536,7 +536,7 @@ fn main() -> Result<(), AError> {
                                     eye: Default::default(),
                                     frame: Default::default(),
                                     mode: Default::default(),
-                                    rowsPerFrame: rows_per_frame as i32,
+                                    rows_per_frame: rows_per_frame as i32,
                                 }
                             })
                         }).collect()]

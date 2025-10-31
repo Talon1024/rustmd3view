@@ -2,11 +2,9 @@ use std::rc::Rc;
 use glam::Mat4;
 use glow::{Context, HasContext};
 use crate::render::{texture::Texture, texture_unit::TextureUnit, traits::{GLUniformLocation, ShaderUniformLocations, ShaderUniforms, Uniform}};
+use gl_macros::ShaderUniformLocations;
 
-
-// TODO: Macro-ize!
-#[allow(non_snake_case)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ShaderUniformLocations)]
 pub struct UniformsMD3 {
     pub gzdoom: bool,
     pub anim: Rc<Texture>,
@@ -14,59 +12,26 @@ pub struct UniformsMD3 {
     pub frame: f32,
     pub mode: u32,
     pub tex: Rc<Texture>,
-    pub rowsPerFrame: i32,
+    pub rows_per_frame: i32,
 }
 
-// TODO: Macro-ize!
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, ShaderUniformLocations)]
 pub struct UniformsRes {
     pub eye: Mat4,
     pub shaded: bool,
 }
 
-// Derive output for UniformsMD3
-
-#[allow(non_snake_case)]
-#[derive(Debug, Clone, Default)]
-pub struct UniformsMD3Locations {
-    gzdoom: Option<GLUniformLocation>,
-    anim: Option<GLUniformLocation>,
-    eye: Option<GLUniformLocation>,
-    frame: Option<GLUniformLocation>,
-    mode: Option<GLUniformLocation>,
-    tex: Option<GLUniformLocation>,
-    rowsPerFrame: Option<GLUniformLocation>,
-}
-
-impl ShaderUniformLocations for UniformsMD3Locations {
-    fn get(
-        glc: &Context,
-        program: <Context as HasContext>::Program,
-    ) -> Self {
-        unsafe {
-            let gzdoom = glc.get_uniform_location(program, "gzdoom");
-            let anim = glc.get_uniform_location(program, "anim");
-            let eye = glc.get_uniform_location(program, "eye");
-            let frame = glc.get_uniform_location(program, "frame");
-            let mode = glc.get_uniform_location(program, "mode");
-            let tex = glc.get_uniform_location(program, "tex");
-            let rows_per_frame =
-                glc.get_uniform_location(program, "rowsPerFrame");
-            UniformsMD3Locations {
-                gzdoom,
-                anim,
-                eye,
-                frame,
-                mode,
-                tex,
-                rowsPerFrame: rows_per_frame,
-            }
-        }
-    }
-}
-
 impl ShaderUniforms<UniformsMD3Locations> for UniformsMD3 {
     fn set(&self, glc: &Context, locations: &UniformsMD3Locations) -> () {
+        /*
+        let gzdoom_extra_data: <bool as Uniform>::ExtraData = Default::default();
+        let anim_extra_data: <Rc<Texture> as Uniform>::ExtraData = Default::default();
+        let eye_extra_data: <Mat4 as Uniform>::ExtraData = Default::default();
+        let frame_extra_data: <f32 as Uniform>::ExtraData = Default::default();
+        let mode_extra_data: <u32 as Uniform>::ExtraData = Default::default();
+        let tex_extra_data: <Rc<Texture> as Uniform>::ExtraData = Default::default();
+        let rowsPerFrame_extra_data: <i32 as Uniform>::ExtraData = Default::default();
+        */
         let mut texture = TextureUnit::default();
         unsafe {
             self.gzdoom.set_uniform(glc, locations.gzdoom.as_ref(), ());
@@ -77,26 +42,7 @@ impl ShaderUniforms<UniformsMD3Locations> for UniformsMD3 {
             self.mode.set_uniform(glc, locations.mode.as_ref(), ());
             self.tex.set_uniform(glc, locations.tex.as_ref(), texture);
             texture.next();
-            self.rowsPerFrame.set_uniform(glc, locations.rowsPerFrame.as_ref(), ());
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct UniformsResLocations {
-    eye: Option<GLUniformLocation>,
-    shaded: Option<GLUniformLocation>,
-}
-
-impl ShaderUniformLocations for UniformsResLocations {
-    fn get(
-        glc: &Context,
-        program: <Context as HasContext>::Program,
-    ) -> Self {
-        unsafe {
-            let eye = glc.get_uniform_location(program, "eye");
-            let shaded = glc.get_uniform_location(program, "shaded");
-            UniformsResLocations { eye, shaded }
+            self.rows_per_frame.set_uniform(glc, locations.rows_per_frame.as_ref(), ());
         }
     }
 }

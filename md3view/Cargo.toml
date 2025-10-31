@@ -24,6 +24,8 @@ instant = {version = "0.1.12", features = ["wasm-bindgen", "now"]}
 futures = { version = "0.3.26", features = ["executor", "thread-pool", "async-await"] }
 lazy_static = "1.4.0"
 binrw = "0.13.3"
+smallvec = "1.15.1"
+gl-macros = { path = "../gl-macros" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 glutin = "0.30.6"

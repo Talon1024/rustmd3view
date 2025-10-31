@@ -3,7 +3,7 @@ use crate::err_util::GLError;
 use crate::md3::MD3Surface;
 use crate::res::{Surface, SurfaceType, AppResources};
 use anyhow::Error as AError;
-use bytemuck::{Pod, Zeroable};
+use bytemuck::Pod;
 use glam::{Mat4, Vec2, Vec3, Vec4};
 use glow::{Context, HasContext, UniformLocation};
 use once_cell::race::OnceBox;
@@ -14,22 +14,26 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
+use smallvec::SmallVec;
+use gl_macros::SeparateVertexAttributes;
 
 type GLUniformLocation = <Context as HasContext>::UniformLocation;
 
-// #[macro_use]
-// mod macros;
 pub trait InterleavedVertexAttributes : Sized {
     unsafe fn setup_vertex_attrs(glc: &Context);
     const STRIDE: i32 = mem::size_of::<Self>() as i32;
 }
 
+pub trait SeparateVertexAttributes : Sized {
+    unsafe fn setup_vertex_attrs(glc: Arc<Context>, data: &[Self]) -> VertexBuffer;
+}
+
 trait VertexAttribute : Sized {
-    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32;
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32);
 }
 
 impl VertexAttribute for u32 {
-    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32 {
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) {
         glc.vertex_attrib_pointer_i32(
             attrib_index,
             1,
@@ -38,12 +42,11 @@ impl VertexAttribute for u32 {
             offset,
         );
         glc.enable_vertex_attrib_array(attrib_index);
-        mem::size_of::<Self>() as i32
     }
 }
 
 impl VertexAttribute for Vec2 {
-    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32 {
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) {
         glc.vertex_attrib_pointer_f32(
             attrib_index,
             2,
@@ -53,12 +56,11 @@ impl VertexAttribute for Vec2 {
             offset,
         );
         glc.enable_vertex_attrib_array(attrib_index);
-        mem::size_of::<Self>() as i32
     }
 }
 
 impl VertexAttribute for Vec3 {
-    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) -> i32 {
+    unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) {
         glc.vertex_attrib_pointer_f32(
             attrib_index,
             3,
@@ -68,7 +70,6 @@ impl VertexAttribute for Vec3 {
             offset
         );
         glc.enable_vertex_attrib_array(attrib_index);
-        mem::size_of::<Self>() as i32
     }
 }
 
@@ -79,7 +80,7 @@ trait Uniform {
 
 impl Uniform for Mat4 {
     type ExtraData = ();
-    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: ()) {
+    unsafe fn set_uniform(&self, glc: &Context, loc: Option<&UniformLocation>, _extra: Self::ExtraData) {
         glc.uniform_matrix_4_f32_slice(
             loc,
             false,
@@ -154,26 +155,70 @@ where
     fn set(&self, glc: &Context, locations: &L) -> ();
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
+#[derive(Debug, Clone, Copy, Default, SeparateVertexAttributes)]
 pub struct VertexMD3 {
     index: u32,
     uv: Vec2,
 }
-
+/*
 impl InterleavedVertexAttributes for VertexMD3 {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
         let stride = Self::STRIDE;
 
-        offset += u32::enable(glc, attrib_index, stride, offset);
+        u32::enable(glc, attrib_index, stride, offset);
+        offset += i32::try_from(mem::size_of::<u32>()).unwrap();
         attrib_index += 1;
 
         Vec2::enable(glc, attrib_index, stride, offset);
     }
 }
 
+impl SeparateVertexAttributes for VertexMD3 {
+    unsafe fn setup_vertex_attrs(glc: Arc<Context>, data: &[Self]) -> VertexBuffer {
+        let mut attrib_index = 0;
+        let mut offset = 0;
+        let count = i32::try_from(data.len()).unwrap();
+
+        let attr_continuous: Vec<u8> = data.iter()
+            .flat_map(|d| SmallVec::<[u8; 128]>::from_slice(bytemuck::bytes_of(&d.index)))
+            .chain(data.iter().flat_map(|d| SmallVec::<[u8; 128]>::from_slice(bytemuck::bytes_of(&d.uv))))
+            .collect();
+
+        let vbo = glc.create_buffer().unwrap();
+        glc.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+
+        glc.buffer_data_u8_slice(
+            glow::ARRAY_BUFFER,
+            &attr_continuous,
+            glow::STATIC_DRAW,
+        );
+
+        let vao = glc.create_vertex_array().unwrap();
+        glc.bind_vertex_array(Some(vao));
+
+        let stride = i32::try_from(mem::size_of::<u32>()).unwrap();
+        u32::enable(&glc, attrib_index, stride, offset);
+        attrib_index += 1;
+        offset += stride * count;
+
+        let stride = i32::try_from(mem::size_of::<Vec2>()).unwrap();
+        Vec2::enable(&glc, attrib_index, stride, offset);
+        attrib_index += 1;
+        offset += stride * count;
+
+        glc.bind_vertex_array(None);
+        glc.bind_buffer(glow::ARRAY_BUFFER, None);
+
+        VertexBuffer {
+            glc,
+            vao,
+            vbo,
+        }
+    }
+}
+*/
 // TODO: Macro-ize!
 #[allow(non_snake_case)]
 #[derive(Debug, Clone)]
@@ -243,29 +288,32 @@ impl ShaderUniforms<UniformsMD3Locations> for UniformsMD3 {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
+#[derive(Debug, Clone, Copy, Default, SeparateVertexAttributes)]
 pub struct VertexRes {
     pub position: Vec3,
     pub colour: Vec3,
     pub normal: Vec3,
 }
 
+/*
 impl InterleavedVertexAttributes for VertexRes {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
         let stride = Self::STRIDE;
 
-        offset += Vec3::enable(glc, attrib_index, stride, offset);
+        Vec3::enable(glc, attrib_index, stride, offset);
+        offset += i32::try_from(mem::size_of::<Vec3>()).unwrap();
         attrib_index += 1;
 
-        offset += Vec3::enable(glc, attrib_index, stride, offset);
+        Vec3::enable(glc, attrib_index, stride, offset);
+        offset += i32::try_from(mem::size_of::<Vec3>()).unwrap();
         attrib_index += 1;
 
         Vec3::enable(glc, attrib_index, stride, offset);
     }
 }
+*/
 
 // TODO: Macro-ize!
 #[derive(Debug, Clone, Default)]
@@ -303,25 +351,27 @@ impl ShaderUniforms<UniformsResLocations> for UniformsRes {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Zeroable, Pod, Default)]
+#[derive(Debug, Clone, Copy, Default, SeparateVertexAttributes)]
 pub struct VertexSprite {
     pub position: Vec2,
     pub size: Vec2,
 }
 
+/*
 impl InterleavedVertexAttributes for VertexSprite {
     unsafe fn setup_vertex_attrs(glc: &Context) {
         let mut attrib_index = 0;
         let mut offset = 0;
         let stride = Self::STRIDE;
 
-        offset += Vec2::enable(glc, attrib_index, stride, offset);
+        Vec2::enable(glc, attrib_index, stride, offset);
+        offset += i32::try_from(mem::size_of::<Vec2>()).unwrap();
         attrib_index += 1;
 
         Vec2::enable(glc, attrib_index, stride, offset);
     }
 }
+*/
 
 #[derive(Debug)]
 pub struct VertexBuffer {

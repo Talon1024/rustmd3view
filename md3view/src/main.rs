@@ -18,9 +18,10 @@ use glow::{Context as GLContext, HasContext};
 use instant::Instant;
 use md3::MD3Model;
 use render::{
-    BasicModel, IndexBuffer, ShaderProgramBuilder, ShaderStage, Texture,
-    UniformsMD3, UniformsMD3Locations, UniformsRes, UniformsResLocations,
-    VertexBuffer, VertexMD3, ThickLines, ThickLineInstanceInfo,
+    BasicModel, SeparateVertexAttributes, IndexBuffer, ShaderProgramBuilder,
+    ShaderStage, Texture, UniformsMD3, UniformsMD3Locations, UniformsRes,
+    UniformsResLocations, VertexBuffer, VertexMD3, VertexRes, ThickLines,
+    ThickLineInstanceInfo,
 };
 use res::{AppResources, Surface};
 use rfd::AsyncFileDialog;
@@ -187,10 +188,10 @@ impl App {
             error_log: None,
             models: vec![],
             tag_axes: BasicModel {
-                vertex: VertexBuffer::new(
-                    Arc::clone(glc),
-                    Box::new(res::TAGAXES_V),
-                ),
+                vertex: unsafe { VertexRes::setup_vertex_attrs(
+                    Arc::clone(&glc),
+                    &res::TAGAXES_V,
+                ) },
                 index: IndexBuffer::new(
                     Arc::clone(glc),
                     Vec::from(res::TAGAXES_I),
@@ -516,7 +517,10 @@ fn main() -> Result<(), AError> {
                             }).ok()?;
                             let anim = Rc::new(anim);
                             Some(BasicModel {
-                                vertex: VertexBuffer::new(Arc::clone(&glc), data.vb.into_boxed_slice()),
+                                // Interleaved vertex attributes
+                                // vertex: VertexBuffer::new(Arc::clone(&glc), data.vb.into_boxed_slice()),
+                                // Separate vertex attributes
+                                vertex: unsafe { <VertexMD3 as SeparateVertexAttributes>::setup_vertex_attrs(Arc::clone(&glc), &data.vb) },
                                 index: IndexBuffer::new(Arc::clone(&glc), data.ib),
                                 shader: Rc::clone(&md3_shader),
                                 uniforms: UniformsMD3 {

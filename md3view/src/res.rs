@@ -1,4 +1,4 @@
-use crate::render::VertexRes;
+use crate::render::vertex_classes::VertexRes;
 use crate::platform;
 use anyhow::Error;
 use bytemuck::Pod;

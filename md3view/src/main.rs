@@ -17,12 +17,7 @@ use glam::{Affine3A, Mat4, Vec3, Vec2, Vec3Swizzles};
 use glow::{Context as GLContext, HasContext};
 use instant::Instant;
 use md3::MD3Model;
-use render::{
-    BasicModel, SeparateVertexAttributes, IndexBuffer, ShaderProgramBuilder,
-    ShaderStage, Texture, UniformsMD3, UniformsMD3Locations, UniformsRes,
-    UniformsResLocations, VertexBuffer, VertexMD3, VertexRes, ThickLines,
-    ThickLineInstanceInfo,
-};
+
 use res::{AppResources, Surface};
 use rfd::AsyncFileDialog;
 use std::{
@@ -44,6 +39,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy},
     window::WindowBuilder,
 };
+
+use crate::render::{basic_model::BasicModel, buffers::{IndexBuffer, VertexBuffer}, shader::{ShaderProgramBuilder, ShaderStage}, texture::Texture, thick_lines::{ThickLineInstanceInfo, ThickLines}, traits::SeparateVertexAttributes, uniform_classes::{UniformsMD3, UniformsMD3Locations, UniformsRes, UniformsResLocations}, vertex_classes::{VertexMD3, VertexRes}};
 
 struct TextureCache {
     cache: HashMap<String, Rc<Texture>, RandomState>,
@@ -213,8 +210,7 @@ impl App {
 
 const MOUSE_FACTOR: f32 = 0.0078125; // 1./128
 const LOOK_LIMIT: f32 = {
-    use std::mem;
-    let v = unsafe { mem::transmute::<f32, u32>(FRAC_PI_2) };
+    let v = FRAC_PI_2.to_bits();
     // It's a pain in the butt having to generate this code... But it's all
     // done at compile time, so there are no runtime costs.
     /*
@@ -296,7 +292,7 @@ const LOOK_LIMIT: f32 = {
     } else {
         0
     };
-    unsafe { mem::transmute::<u32, f32>(v ^ lowest_bit) }
+    f32::from_bits(v ^ lowest_bit)
 };
 
 const BLANK_SURFACE_SHADER_NAME: &str = "_____blank_____";

@@ -1,0 +1,124 @@
+use glow::{Context, HasContext};
+use std::{marker::PhantomData, sync::Arc};
+use crate::{md3::MD3Surface, render::{traits::{IndexInteger, InterleavedVertexAttributes}, vertex_classes::VertexMD3}};
+use bytemuck::Pod;
+
+#[derive(Debug)]
+pub struct VertexBuffer {
+    pub(crate) glc: Arc<Context>,
+    pub(crate) vao: <Context as HasContext>::VertexArray,
+    pub(crate) vbo: <Context as HasContext>::Buffer,
+    // size: i32,
+}
+
+impl VertexBuffer {
+    pub fn new<T>(glc: Arc<Context>, buf: Box<[T]>) -> Self
+    where
+        T: InterleavedVertexAttributes + Pod,
+    {
+        let (vao, vbo) = unsafe {
+            let glc = &glc;
+            let vao = glc.create_vertex_array().unwrap();
+            glc.bind_vertex_array(Some(vao));
+            let vbo = glc.create_buffer().unwrap();
+            glc.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+            glc.buffer_data_u8_slice(
+                glow::ARRAY_BUFFER,
+                bytemuck::cast_slice(&buf),
+                glow::STATIC_DRAW,
+            );
+            T::setup_vertex_attrs(glc);
+            glc.bind_vertex_array(None);
+            glc.bind_buffer(glow::ARRAY_BUFFER, None);
+            (vao, vbo)
+        };
+        // let size = buf.len() as i32;
+        Self {
+            glc,
+            vao,
+            vbo,
+            // size,
+        }
+    }
+    /* pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
+        let buf: Vec<VertexMD3> = surf
+            .texcoords
+            .iter()
+            .enumerate()
+            .map(|(index, uv)| VertexMD3 { index: index as u32, uv: uv.0 })
+            .collect();
+        VertexBuffer::new(glc, buf.into_boxed_slice())
+    } */
+    pub fn from_surface(surf: &MD3Surface) -> Vec<VertexMD3> {
+        surf.texcoords
+            .iter()
+            .enumerate()
+            .map(|(index, uv)| VertexMD3 { index: index as u32, uv: uv.0 })
+            .collect()
+    }
+}
+
+impl Drop for VertexBuffer {
+    fn drop(&mut self) {
+        #[cfg(feature = "log_drop_gl_resources")]
+        println!("Drop VertexBuffer");
+        let glc = &self.glc;
+        unsafe {
+            glc.delete_vertex_array(self.vao);
+            glc.delete_buffer(self.vbo);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct IndexBuffer<I>
+where
+    I: IndexInteger + Pod,
+{
+    pub(crate) glc: Arc<Context>,
+    pub(crate) ebo: <Context as HasContext>::Buffer,
+    pub(crate) size: i32,
+    // Used to access OpenGL constant for the index data type (GL_TYPE)
+    itype: PhantomData<I>,
+}
+
+impl<I> IndexBuffer<I>
+where
+    I: IndexInteger + Pod,
+{
+    pub fn new(glc: Arc<Context>, buf: Vec<I>) -> Self {
+        let ebo = unsafe {
+            let ebo = glc.create_buffer().unwrap();
+            glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
+            glc.buffer_data_u8_slice(
+                glow::ELEMENT_ARRAY_BUFFER,
+                bytemuck::cast_slice(&buf),
+                glow::STATIC_DRAW,
+            );
+            glc.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, None);
+            ebo
+        };
+        let size = buf.len() as i32;
+        Self { glc, ebo, size, itype: PhantomData }
+    }
+}
+
+impl IndexBuffer<u32> {
+    pub fn from_surface(surf: &MD3Surface) -> Vec<u32> {
+        surf.triangles.iter().flat_map(|t| t.0).collect()
+    }
+}
+
+impl<I> Drop for IndexBuffer<I>
+where
+    I: IndexInteger + Pod,
+{
+    fn drop(&mut self) {
+        #[cfg(feature = "log_drop_gl_resources")]
+        println!("Drop IndexBuffer");
+        let glc = &self.glc;
+        unsafe {
+            glc.delete_buffer(self.ebo);
+        }
+    }
+}

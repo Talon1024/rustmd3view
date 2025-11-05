@@ -7,9 +7,11 @@ uniform int rowsPerFrame;
 uniform float frame; // interpolated
 layout(location=0) in uint aIndex;
 layout(location=1) in vec2 aUv;
+layout(location=2) in vec2 aBary;
 out vec3 position;
 out vec3 eyeNormal;
 out vec2 uv;
+out vec2 barycenter;
 
 const float MD3_XYZ_SCALE = 0.015625; //1./64
 const float BYTE_TAU = 40.58451048843331062106; //255./(2.*pi)
@@ -72,5 +74,6 @@ void main() {
 	eyeNormal = (eye * vec4(mix(va[1], vb[1], interp), 0.)).xyz;
 	eyeNormal.z = -eyeNormal.z;
 	uv = aUv;
+	barycenter = aBary;
 	gl_Position = eye * vec4(position, 1.);
 }

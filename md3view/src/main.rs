@@ -137,6 +137,7 @@ enum ViewMode {
     Textured,
     Untextured,
     Normals,
+    Wireframe,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -795,6 +796,13 @@ fn main() -> Result<(), AError> {
                                             &mut app.controls.view_mode,
                                             ViewMode::Normals,
                                             "Normals",
+                                        )
+                                        .clicked()
+                                    || ui
+                                        .radio_value(
+                                            &mut app.controls.view_mode,
+                                            ViewMode::Wireframe,
+                                            "Wireframe",
                                         )
                                         .clicked()
                                 {

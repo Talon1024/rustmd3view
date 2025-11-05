@@ -11,6 +11,7 @@ use std::time::Instant;
 pub struct VertexMD3 {
     pub index: u32,
     pub uv: Vec2,
+    pub barycenter: Vec2,
 }
 
 #[derive(Debug, Clone, Copy, Default, SeparateVertexAttributes)]

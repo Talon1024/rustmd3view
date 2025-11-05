@@ -1,5 +1,6 @@
 use glow::{Context, HasContext};
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, iter};
+use glam::Vec2;
 use crate::{md3::MD3Surface, render::{traits::IndexInteger, vertex_classes::VertexMD3}};
 use bytemuck::Pod;
 
@@ -13,10 +14,13 @@ pub struct VertexBuffer {
 
 impl VertexBuffer {
     pub fn from_surface(surf: &MD3Surface) -> Vec<VertexMD3> {
+        let barycenter = iter::repeat([Vec2::new(0.0, 0.0), Vec2::new(1.0, 0.0), Vec2::new(0.0, 1.0)]);
+        let bary_iter = barycenter.flatten();
         surf.texcoords
             .iter()
+            .zip(bary_iter)
             .enumerate()
-            .map(|(index, uv)| VertexMD3 { index: index as u32, uv: uv.0 })
+            .map(|(index, (uv, barycenter))| VertexMD3 { index: index as u32, uv: uv.0, barycenter })
             .collect()
     }
 }

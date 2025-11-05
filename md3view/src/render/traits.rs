@@ -1,3 +1,4 @@
+use bytes::BufMut;
 use glow::{Context, HasContext, UniformLocation};
 use std::{rc::Rc, sync::Arc, mem};
 use glam::{Vec2, Vec3, Mat4};
@@ -16,10 +17,13 @@ pub trait SeparateVertexAttributes : Sized {
 }
 
 pub trait VertexAttribute : Sized {
+    const SLOTS: usize;
     unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32);
+    fn write_to_buf(self: Self, buf: &mut dyn BufMut);
 }
 
 impl VertexAttribute for u32 {
+    const SLOTS: usize = 1;
     unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) {
         glc.vertex_attrib_pointer_i32(
             attrib_index,
@@ -30,9 +34,13 @@ impl VertexAttribute for u32 {
         );
         glc.enable_vertex_attrib_array(attrib_index);
     }
+    fn write_to_buf(self: Self, buf: &mut dyn BufMut) {
+        buf.put_u32_ne(self);
+    }
 }
 
 impl VertexAttribute for Vec2 {
+    const SLOTS: usize = 1;
     unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) {
         glc.vertex_attrib_pointer_f32(
             attrib_index,
@@ -44,9 +52,14 @@ impl VertexAttribute for Vec2 {
         );
         glc.enable_vertex_attrib_array(attrib_index);
     }
+    fn write_to_buf(self: Self, buf: &mut dyn BufMut) {
+        buf.put_f32_ne(self.x);
+        buf.put_f32_ne(self.y);
+    }
 }
 
 impl VertexAttribute for Vec3 {
+    const SLOTS: usize = 1;
     unsafe fn enable(glc: &Context, attrib_index: u32, stride: i32, offset: i32) {
         glc.vertex_attrib_pointer_f32(
             attrib_index,
@@ -57,6 +70,11 @@ impl VertexAttribute for Vec3 {
             offset
         );
         glc.enable_vertex_attrib_array(attrib_index);
+    }
+    fn write_to_buf(self: Self, buf: &mut dyn BufMut) {
+        buf.put_f32_ne(self.x);
+        buf.put_f32_ne(self.y);
+        buf.put_f32_ne(self.z);
     }
 }
 

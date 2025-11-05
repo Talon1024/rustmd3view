@@ -26,6 +26,7 @@ lazy_static = "1.4.0"
 binrw = "0.13.3"
 smallvec = "1.15.1"
 gl-macros = { path = "../gl-macros" }
+bytes = "1.10.1"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 glutin = "0.30.6"
@@ -42,6 +43,8 @@ console_error_panic_hook = "0.1.7"
 
 [features]
 default = []
-extra_logging = ["log_drop_gl_resources"]
+extra_logging = ["log_drop_gl_resources", "log_conversion_time"]
 log_drop_gl_resources = []
+log_conversion_time = []
+iterate_through_data_multiple_times = []
 make_animation_is_bugged = []

@@ -1,6 +1,6 @@
 use glow::{Context, HasContext};
 use std::{marker::PhantomData, sync::Arc};
-use crate::{md3::MD3Surface, render::{traits::{IndexInteger, InterleavedVertexAttributes}, vertex_classes::VertexMD3}};
+use crate::{md3::MD3Surface, render::{traits::IndexInteger, vertex_classes::VertexMD3}};
 use bytemuck::Pod;
 
 #[derive(Debug)]
@@ -12,43 +12,6 @@ pub struct VertexBuffer {
 }
 
 impl VertexBuffer {
-    pub fn new<T>(glc: Arc<Context>, buf: Box<[T]>) -> Self
-    where
-        T: InterleavedVertexAttributes + Pod,
-    {
-        let (vao, vbo) = unsafe {
-            let glc = &glc;
-            let vao = glc.create_vertex_array().unwrap();
-            glc.bind_vertex_array(Some(vao));
-            let vbo = glc.create_buffer().unwrap();
-            glc.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-            glc.buffer_data_u8_slice(
-                glow::ARRAY_BUFFER,
-                bytemuck::cast_slice(&buf),
-                glow::STATIC_DRAW,
-            );
-            T::setup_vertex_attrs(glc);
-            glc.bind_vertex_array(None);
-            glc.bind_buffer(glow::ARRAY_BUFFER, None);
-            (vao, vbo)
-        };
-        // let size = buf.len() as i32;
-        Self {
-            glc,
-            vao,
-            vbo,
-            // size,
-        }
-    }
-    /* pub fn from_surface(glc: Arc<Context>, surf: &MD3Surface) -> Self {
-        let buf: Vec<VertexMD3> = surf
-            .texcoords
-            .iter()
-            .enumerate()
-            .map(|(index, uv)| VertexMD3 { index: index as u32, uv: uv.0 })
-            .collect();
-        VertexBuffer::new(glc, buf.into_boxed_slice())
-    } */
     pub fn from_surface(surf: &MD3Surface) -> Vec<VertexMD3> {
         surf.texcoords
             .iter()

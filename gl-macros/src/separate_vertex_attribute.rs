@@ -75,8 +75,6 @@
 //     }
 // }
 
-const ALPHABET: &'static str = "abcdefghijklmnopqrstuvwxyz";
-
 use proc_macro::TokenStream;
 use proc_macro2::{TokenStream as TokenStream2, Span};
 use syn::{parse_macro_input, DeriveInput};

@@ -1,6 +1,6 @@
 use glam::f32::{Mat3, Vec2, Vec3};
 use rayon::prelude::*;
-use std::io::{Read, Seek, SeekFrom};
+use std::{io::{Read, Seek, SeekFrom}, mem::MaybeUninit};
 use bytes::BufMut;
 use thiserror::Error;
 use binrw::{BinRead, Endian, VecArgs};
@@ -89,20 +89,18 @@ impl MD3Surface {
                 let start = frame * vertices;
                 let end = start + vertices;
                 self.vertices[start..end].iter().for_each(|vtx| {
-                    frame_data.put_i32_ne(vtx.x as i32);
-                    frame_data.put_i32_ne(vtx.y as i32);
-                    frame_data.put_i32_ne(vtx.z as i32);
-                    frame_data.put_i32_ne(vtx.n as i32);
+                    vtx.write_to_buf(&mut frame_data);
                 });
+                // Fill out the rest of the data with blanks...
+                // frame_data.iter_mut().for_each(|byte| {byte.write(0);});
             });
         } else {
             let mut frame_data = memory;
             self.vertices.iter().for_each(|vtx| {
-                frame_data.put_i32_ne(vtx.x as i32);
-                frame_data.put_i32_ne(vtx.y as i32);
-                frame_data.put_i32_ne(vtx.z as i32);
-                frame_data.put_i32_ne(vtx.n as i32);
+                vtx.write_to_buf(&mut frame_data);
             });
+            // Fill out the rest of the data with blanks...
+            // frame_data.iter_mut().for_each(|byte| {byte.write(0);});
         }
         unsafe { data.set_len(width * height * channels); }
         let data = data.into_boxed_slice();
@@ -141,6 +139,14 @@ pub struct MD3FrameVertex {
     pub y: i16,
     pub z: i16,
     pub n: u16,
+}
+impl MD3FrameVertex {
+    fn write_to_buf(&self, frame_data: &mut &mut [MaybeUninit<u8>]) {
+        frame_data.put_i32_ne(i32::try_from(self.x).unwrap());
+        frame_data.put_i32_ne(i32::try_from(self.y).unwrap());
+        frame_data.put_i32_ne(i32::try_from(self.z).unwrap());
+        frame_data.put_i32_ne(i32::try_from(self.n).unwrap());
+    }
 }
 
 // Keeping this here for reference...

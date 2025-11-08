@@ -1,8 +1,7 @@
 use glam::f32::{Mat3, Vec2, Vec3};
-use rayon::iter as riter;
 use rayon::prelude::*;
 use std::io::{Read, Seek, SeekFrom};
-use std::iter;
+use bytes::BufMut;
 use thiserror::Error;
 use binrw::{BinRead, Endian, VecArgs};
 
@@ -64,7 +63,6 @@ pub struct MD3Surface {
 
 #[derive(Debug, Clone, Default)]
 pub struct Animation {
-    pub _vertices: u32,
     pub frames: u32,
     pub rows_per_frame: u32,
     pub data: Box<[u8]>,
@@ -78,84 +76,37 @@ impl MD3Surface {
         let rows_per_frame = (vertices as f32 / width as f32).ceil() as usize;
         let pixels_per_frame = width * rows_per_frame;
         let height = frames * rows_per_frame;
-        // 4 "colour channels" * size_of(i32) bytes
+        assert!(vertices <= pixels_per_frame);
+        // 4 channels (X, Y, Z, normal) * size_of(i32) bytes
         let channels = 4usize * std::mem::size_of::<i32>();
-        let data = if frames > 1 {
-            (0..frames)
-                .into_par_iter()
-                .flat_map(|frame| {
-                    let start = frame * vertices;
-                    let end = start + vertices;
-                    let by_slice = self.vertices[start..end]
-                        .iter()
-                        .map(|vert| vert.to_pixel().map(i32::to_ne_bytes))
-                        .chain(iter::repeat([[0; 4]; 4]))
-                        .take(pixels_per_frame)
-                        .flatten()
-                        .flatten()
-                        .collect::<Vec<u8>>();
-                    #[cfg(feature = "make_animation_is_bugged")]
-                    {
-                        let start = frame * pixels_per_frame;
-                        let end = start + pixels_per_frame;
-                        let by_index = (start..end)
-                            .into_iter()
-                            .flat_map(|vindex| {
-                                let vindex = vindex % pixels_per_frame;
-                                if vindex < vertices {
-                                    let vindex = frame * vertices + vindex;
-                                    self.vertices[vindex]
-                                        .to_pixel()
-                                        .map(i32::to_ne_bytes)
-                                } else {
-                                    [[0; 4]; 4]
-                                }
-                            })
-                            .flatten()
-                            .collect::<Vec<u8>>();
-                        assert_eq!(by_slice.len(), by_index.len());
-                        assert_eq!(by_slice, by_index);
-                    }
-                    by_slice
-                })
-                .collect::<Vec<u8>>()
-                .into_boxed_slice()
+        let mut data: Vec<u8> = Vec::with_capacity(width * height * channels);
+        let memory = data.spare_capacity_mut();
+        if frames > 1 {
+            assert_eq!(memory.chunks_exact(pixels_per_frame * channels).count(), frames);
+            memory.par_chunks_exact_mut(pixels_per_frame * channels)
+            .enumerate()
+            .for_each(|(frame, mut frame_data)| {
+                let start = frame * vertices;
+                let end = start + vertices;
+                self.vertices[start..end].iter().for_each(|vtx| {
+                    frame_data.put_i32_ne(vtx.x as i32);
+                    frame_data.put_i32_ne(vtx.y as i32);
+                    frame_data.put_i32_ne(vtx.z as i32);
+                    frame_data.put_i32_ne(vtx.n as i32);
+                });
+            });
         } else {
-            let extra_count = pixels_per_frame - self.vertices.len();
-            let by_slice = self
-                .vertices
-                .par_iter()
-                .map(|vert| vert.to_pixel().map(i32::to_ne_bytes))
-                .chain(riter::repeatn([[0; 4]; 4], extra_count))
-                .flatten()
-                .flatten()
-                .collect::<Vec<u8>>()
-                .into_boxed_slice();
-            #[cfg(feature = "make_animation_is_bugged")]
-            {
-                let by_index = (0..pixels_per_frame)
-                    .into_par_iter()
-                    .flat_map(|vindex| {
-                        let vindex = vindex % pixels_per_frame;
-                        if vindex < vertices {
-                            self.vertices[vindex]
-                                .to_pixel()
-                                .map(i32::to_ne_bytes)
-                        } else {
-                            [[0; 4]; 4]
-                        }
-                    })
-                    .flatten()
-                    .collect::<Vec<u8>>()
-                    .into_boxed_slice();
-                assert_eq!(by_slice.len(), by_index.len());
-                assert_eq!(by_slice, by_index);
-            }
-            by_slice
-        };
-        assert_eq!(data.len(), width * height * channels);
+            let mut frame_data = memory;
+            self.vertices.iter().for_each(|vtx| {
+                frame_data.put_i32_ne(vtx.x as i32);
+                frame_data.put_i32_ne(vtx.y as i32);
+                frame_data.put_i32_ne(vtx.z as i32);
+                frame_data.put_i32_ne(vtx.n as i32);
+            });
+        }
+        unsafe { data.set_len(width * height * channels); }
+        let data = data.into_boxed_slice();
         Animation {
-            _vertices: vertices as u32,
             frames: frames as u32,
             rows_per_frame: rows_per_frame as u32,
             data,
@@ -192,11 +143,14 @@ pub struct MD3FrameVertex {
     pub n: u16,
 }
 
+// Keeping this here for reference...
+/*
 impl MD3FrameVertex {
     pub fn to_pixel(&self) -> [i32; 4] {
         [self.x as i32, self.y as i32, self.z as i32, self.n as i32]
     }
 }
+*/
 
 #[derive(Debug, Error)]
 pub enum MD3ReadError {
